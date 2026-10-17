@@ -12,6 +12,7 @@
 //   wait:ms                          — пауза
 //   shot:/path.png                   — промежуточный скриншот
 //   dialog:текст                     — ответ на следующий window.prompt (confirm → accept)
+//   eval:js                          — выполнить JS на странице (напр. подложить localStorage)
 import { chromium } from 'playwright';
 
 const [out, ...steps] = process.argv.slice(2);
@@ -79,6 +80,8 @@ for (const raw of steps) {
     await page.waitForTimeout(Number(arg));
   } else if (cmd === 'shot') {
     await page.screenshot({ path: arg });
+  } else if (cmd === 'eval') {
+    await page.evaluate(arg);
   } else if (cmd === 'dialog') {
     dialogAnswer = arg;
   } else {

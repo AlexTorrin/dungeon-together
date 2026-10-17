@@ -72,3 +72,16 @@ export {
 } from './rules/plan';
 export { DIFFICULTIES, DIFFICULTY_LIST, type Difficulty } from './config/level';
 export { BACKPACK_SIZE } from './config/inventory';
+export {
+  EMPTY_PROFILE,
+  buy,
+  finishRun,
+  itemAt,
+  move,
+  sell,
+  startRun,
+  type Loadout,
+  type Profile,
+  type Slot,
+} from './hub/profile';
+export { PRICES, SHOP_STOCK, sellPrice } from './config/shop';

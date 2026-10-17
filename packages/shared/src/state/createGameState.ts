@@ -14,7 +14,10 @@ import type {
   PlayerId,
   Position,
   Room,
+  WeaponType,
 } from '../types';
+import { BACKPACK_SIZE } from '../config/inventory';
+import type { Loadout } from '../hub/profile';
 
 const key = ({ x, y }: Position): string => `${x},${y}`;
 
@@ -50,6 +53,8 @@ export function createGameState(
   room: Room,
   playerIds: readonly PlayerId[],
   seed: number,
+  /** С чем игроки приходят на уровень (из хаба); нет записи — с пустыми руками. */
+  loadouts: Readonly<Record<PlayerId, Loadout>> = {},
 ): GameState {
   let nextId = 1;
   const actors: Record<ActorId, Actor> = {};
@@ -86,14 +91,20 @@ export function createGameState(
     const pos = positions[i];
     if (!pos) throw new Error(`No position for player ${id}`);
     if (Object.hasOwn(actors, id)) throw new Error(`Duplicate actor id ${id}`);
+    const loadout = Object.hasOwn(loadouts, id) ? loadouts[id] : undefined;
+    const newItem = (type: WeaponType): Item => {
+      let itemId: ItemId;
+      [itemId, nextId] = allocateId(nextId, 'item');
+      return { id: itemId, type };
+    };
     actors[id] = {
       kind: 'player',
       id,
       pos,
       hp: PLAYER_MAX_HP,
       maxHp: PLAYER_MAX_HP,
-      weapon: null,
-      backpack: [],
+      weapon: loadout?.weapon ? newItem(loadout.weapon) : null,
+      backpack: (loadout?.backpack ?? []).slice(0, BACKPACK_SIZE).map(newItem),
       coins: 0,
       keys: 0,
     };

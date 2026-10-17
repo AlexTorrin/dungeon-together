@@ -6,6 +6,7 @@ import {
   canAttack,
   canOpenDoor,
   createGameState,
+  finishRun,
   isPlanValid,
   simulatePlan,
   WEAPONS,
@@ -47,6 +48,8 @@ import { ItemLayer } from '../render/ItemLayer';
 import { MapView } from '../render/mapView';
 import { ActionPopup, type PopupOption } from '../ui/ActionPopup';
 import { UiOverlay } from '../ui/UiOverlay';
+import { WEAPON_NAMES } from '../ui/names';
+import { loadProfile, saveProfile } from '../storage/profileStorage';
 import { SCENES, type GameReturn, type GameSceneData } from './sceneKeys';
 
 /** Игрок за этим компьютером. В сетевой игре id выдаст сервер. */
@@ -89,6 +92,8 @@ const HUD_HEIGHT = 124;
 const WAIT: Action = { type: 'wait' };
 /** Второй клик по той же клетке быстрее этого — двойной клик. */
 const DOUBLE_CLICK_MS = 350;
+/** Сколько ждать второго Esc, чтобы бросить забег. */
+const ABANDON_CONFIRM_MS = 2000;
 
 /** События хода, разложенные по фазам: каждая заканчивается phaseResolved. */
 function splitByPhase(events: readonly GameEvent[]): GameEvent[][] {
@@ -100,13 +105,6 @@ function splitByPhase(events: readonly GameEvent[]): GameEvent[][] {
   return batches.filter((batch) => batch.length > 0);
 }
 
-const WEAPON_NAMES = {
-  none: 'кулаки',
-  knife: 'нож',
-  bow: 'лук',
-  sword: 'меч',
-  wand: 'палочка',
-} as const;
 const SPECIES_NAMES = { skeleton: 'скелет', skull: 'череп', vampire: 'вампир' } as const;
 
 const REJECT_TEXT: Readonly<Record<PlanRejectReason, string>> = {
@@ -185,6 +183,10 @@ export class GameScene extends Phaser.Scene {
   /** Курсор прицела с клавиатуры (F); null — прицел выключен. */
   private aim: Position | null = null;
   private gameOver = false;
+  /** Забег из лагеря (а не тренировка): добыча сохраняется в профиль. */
+  private isRun = false;
+  /** Когда Esc в забеге нажали первый раз — второй в течение ABANDON_CONFIRM_MS бросает забег. */
+  private abandonAskedAt: number | null = null;
 
   constructor() {
     super(SCENES.game);
@@ -193,7 +195,10 @@ export class GameScene extends Phaser.Scene {
   init(data: GameSceneData): void {
     this.back = data.back;
     this.title = data.title;
-    this.session = new LocalGame(createGameState(data.room, [LOCAL_ID], randomSeed()));
+    this.isRun = data.run !== undefined;
+    this.abandonAskedAt = null;
+    const loadouts = data.run ? { [LOCAL_ID]: data.run } : {};
+    this.session = new LocalGame(createGameState(data.room, [LOCAL_ID], randomSeed(), loadouts));
     this.keys = new Map();
     this.draft = [];
     this.sent = null;
@@ -320,7 +325,8 @@ export class GameScene extends Phaser.Scene {
     if (this.is('back', code)) {
       const nothingPlanned =
         !this.popup.isOpen && this.draft.length === 0 && !this.aim && !this.sent;
-      if (this.gameOver || nothingPlanned) this.goBack();
+      if (this.gameOver) this.goBack();
+      else if (nothingPlanned) this.confirmBack();
       else this.clearPlan();
       return;
     }
@@ -908,12 +914,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showGameOver(status: 'won' | 'lost'): void {
+    if (this.gameOver) return; // добычу сохраняем ровно один раз
     this.gameOver = true;
     this.draft = [];
     this.goal = null;
     this.popup.hide();
     const { width, height } = this.scale;
     const loot = this.session.state.escaped[LOCAL_ID];
+    // Вещи забега уже убраны из профиля при старте: вынесенное возвращаем, остальное потеряно.
+    const saved = this.isRun && saveProfile(finishRun(loadProfile(), loot));
     const title =
       status === 'lost' ? 'Вы погибли' : loot ? 'Уровень пройден!' : 'Уровень пройден без вас';
     this.ui.add(this.add.rectangle(0, 0, width, height, UI_COLORS.panel, 0.6).setOrigin(0));
@@ -931,6 +940,10 @@ export class GameScene extends Phaser.Scene {
         `в рюкзаке: ${loot.backpack.map((i) => WEAPON_NAMES[i.type]).join(', ') || 'пусто'}`
       : 'Всё, что вы несли, потеряно';
     this.ui.text(width / 2, height / 2 + 26, summary).setOrigin(0.5);
+    if (this.isRun && loot) {
+      const note = saved ? 'Добыча — в лагере' : 'Не удалось сохранить добычу (localStorage)';
+      this.ui.text(width / 2, height / 2 + 78, note, UI_COLORS.muted).setOrigin(0.5);
+    }
     this.ui.text(width / 2, height / 2 + 52, 'Esc — выйти', UI_COLORS.muted).setOrigin(0.5);
   }
 
@@ -1077,6 +1090,20 @@ export class GameScene extends Phaser.Scene {
             ? `План: ${this.describePlan(this.draft)} — ещё ${ACTION_POINTS - used} ОД или Enter (остаток — ждать)`
             : `План: ${this.describePlan(this.draft)} — Enter, чтобы подтвердить`;
     this.status.setText(`${head}\n${inventory}\n${choice}\n${this.lastLog}`);
+  }
+
+  /** В забеге выход по Esc — бросить его и потерять несённое, поэтому спрашиваем дважды. */
+  private confirmBack(): void {
+    const now = this.time.now;
+    if (
+      !this.isRun ||
+      (this.abandonAskedAt !== null && now - this.abandonAskedAt < ABANDON_CONFIRM_MS)
+    ) {
+      this.goBack();
+      return;
+    }
+    this.abandonAskedAt = now;
+    this.ui.toast('Esc ещё раз — бросить забег: всё, что несёте, пропадёт');
   }
 
   private goBack(): void {

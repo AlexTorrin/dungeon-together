@@ -1,9 +1,19 @@
 import Phaser from 'phaser';
-import { DEMO_ROOM, DIFFICULTY_LIST, generateLevel, type Difficulty, type Room } from '@dt/shared';
+import {
+  DEMO_ROOM,
+  DIFFICULTY_LIST,
+  generateLevel,
+  startRun,
+  type Difficulty,
+  type Loadout,
+  type Room,
+} from '@dt/shared';
 import { randomSeed } from '../game/randomSeed';
 import { TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import { MapView } from '../render/mapView';
+import { loadProfile, saveProfile } from '../storage/profileStorage';
 import { deleteRoom, loadRooms } from '../storage/roomStorage';
+import { WEAPON_NAMES } from '../ui/names';
 import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
 import { SCENES, type EditorSceneData, type GameSceneData } from './sceneKeys';
@@ -17,13 +27,15 @@ const DIFFICULTY_NAMES: Readonly<Record<Difficulty, string>> = {
 };
 
 export class MenuScene extends Phaser.Scene {
+  private ui!: UiOverlay;
+
   constructor() {
     super(SCENES.menu);
   }
 
   create(): void {
     // Фон — демо-подземелье, притушенное полупрозрачной панелью.
-    const ui = new UiOverlay(this);
+    const ui = (this.ui = new UiOverlay(this));
     new MapView(this, DEMO_ROOM.map, (obj) => ui.world(obj));
     const camera = this.cameras.main.setZoom(ZOOM);
     camera.centerOn((DEMO_ROOM.map.width * TILE_SIZE) / 2, (DEMO_ROOM.map.height * TILE_SIZE) / 2);
@@ -32,7 +44,7 @@ export class MenuScene extends Phaser.Scene {
     ui.add(this.add.rectangle(0, 0, width, height, UI_COLORS.panel, 0.7).setOrigin(0));
 
     const left = Math.max(24, width / 2 - 200);
-    let y = Math.max(24, height / 2 - 180);
+    let y = Math.max(24, height / 2 - 240);
     ui.add(
       this.add.text(left, y, 'Dungeon Togethere', {
         fontFamily: 'monospace',
@@ -47,7 +59,7 @@ export class MenuScene extends Phaser.Scene {
       ui.add(
         new TextButton(this, 0, 0, `▶ ${DIFFICULTY_NAMES[difficulty]}`, () => {
           const seed = randomSeed();
-          this.play(
+          this.startRun(
             generateLevel(seed, difficulty),
             `Подземелье #${seed} · ${DIFFICULTY_NAMES[difficulty]}`,
           );
@@ -57,13 +69,28 @@ export class MenuScene extends Phaser.Scene {
     const demo = ui.add(
       new TextButton(this, 0, 0, 'Демо-комната', () => this.play(DEMO_ROOM, 'Демо-комната')),
     );
-    ui.text(left, y - 22, 'Новое подземелье:', UI_COLORS.muted);
-    layoutRow([...dungeons, demo], left, y);
-    y += 44;
+    ui.text(left, y - 22, 'Новое подземелье — со снаряжением из лагеря:', UI_COLORS.muted);
+    layoutRow(dungeons, left, y);
+    y += 40;
+    const profile = loadProfile();
+    const backpack = profile.backpack.map((t) => WEAPON_NAMES[t]).join(', ') || 'пусто';
+    ui.text(
+      left,
+      y,
+      `Кошелёк: ${profile.coins} · в руках: ${WEAPON_NAMES[profile.hands ?? 'none']} · рюкзак: ${backpack}`,
+      UI_COLORS.muted,
+    );
+    y += 28;
+    const hub = ui.add(
+      new TextButton(this, 0, 0, '⚒ Лагерь: магазин и сундук', () => this.scene.start(SCENES.hub)),
+    );
+    layoutRow([hub], left, y);
+    y += 66;
+    ui.text(left, y - 22, 'Тренировка — без снаряжения, добыча не сохраняется:', UI_COLORS.muted);
     const editor = ui.add(
       new TextButton(this, 0, 0, '✎ Редактор комнат', () => this.openEditor({})),
     );
-    layoutRow([editor], left, y);
+    layoutRow([demo, editor], left, y);
     y += 60;
 
     const rooms = loadRooms();
@@ -107,9 +134,19 @@ export class MenuScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.scale.off('resize', onResize));
   }
 
-  private play(room: Room, title: string): void {
-    const data: GameSceneData = { room, title, back: { to: 'menu' } };
+  private play(room: Room, title: string, run?: Loadout): void {
+    const data: GameSceneData = { room, title, back: { to: 'menu' }, ...(run ? { run } : {}) };
     this.scene.start(SCENES.game, data);
+  }
+
+  /** Забег: снаряжение уходит из профиля сразу — вернётся только то, что вынесете. */
+  private startRun(room: Room, title: string): void {
+    const { profile, loadout } = startRun(loadProfile());
+    if (!saveProfile(profile)) {
+      this.ui.toast('Не удалось сохранить профиль — забег не начат');
+      return;
+    }
+    this.play(room, title, loadout);
   }
 
   private openEditor(data: EditorSceneData): void {
