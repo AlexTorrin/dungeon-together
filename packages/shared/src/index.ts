@@ -44,3 +44,4 @@ export { DEMO_ROOM } from './map/demoMap';
 export { DIRECTIONS, isDirection, step } from './direction';
 export { createGameState } from './state/createGameState';
 export { applyCommand } from './rules/applyCommand';
+export { MAX_PLAYER_ID_LENGTH, parseAction, parseCommand } from './parseCommand';

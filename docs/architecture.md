@@ -26,6 +26,7 @@
 | `types.ts`                                                               | `Position`, `Tile`, `GameMap`, `Room`, `Actor` (игрок или монстр), `Item`, `Action`, `GameState`         |
 | `commands.ts`                                                            | `Command` (что шлёт клиент) и `GameEvent` (что происходит) — discriminated unions по `type`              |
 | `direction.ts`                                                           | `Direction`, `step(pos, dir)`, `isDirection` (пригодится для валидации на сервере)                       |
+| `parseCommand.ts`                                                        | `parseCommand` / `parseAction`: `unknown` из сети → `Command` / `Action` или `null`                      |
 | `map/gameMap.ts`                                                         | `getTile` (за краем — стена), `isWalkable`, неизменяемые `setTile` и `resizeMap`                         |
 | `map/parseAsciiMap.ts`, `map/room.ts`                                    | ASCII ⇄ карта/комната, `createEmptyRoom`, `setRoomSpawn`, `resizeRoom`                                   |
 | `map/demoMap.ts`                                                         | `DEMO_ROOM` — временная демо-карта до появления генератора                                               |
@@ -55,6 +56,23 @@
 #.....#
 #######
 ```
+
+## Недоверенные команды: `parseCommand`
+
+`applyCommand` доверяет типам TypeScript, а в рантайме из сети придёт что угодно. Поэтому
+на границе данные сначала проходят `parseCommand(raw: unknown): Command | null` — приём
+«parse, don't validate»: `unknown` один раз превращается в строгий тип, дальше код работает
+только с ним. Парсер собирает **новый** объект из известных полей (лишние поля и `__proto__`
+отбрасываются), проверяет направление через `isDirection` и длину `playerId`.
+
+Разделение ответственности:
+
+- `parseCommand` проверяет только **форму** команды;
+- `applyCommand` / `submitAction` — **правила** (есть ли такой игрок, ходит ли он ещё в этом ходу);
+- сервер (шаг 6) — **кто прислал**: `playerId` подставляет из сессии, а не берёт из сообщения.
+
+Без парсера одна команда с неизвестным направлением сохранялась в `pendingActions` и роняла
+разрешение хода у всех — тест в `parseCommand.test.ts` это закрепляет.
 
 ## Очерёдность ходов: одновременные ходы
 
