@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   delta,
+  posKey,
   step,
   type Actor,
   type ActorId,
@@ -42,6 +43,8 @@ export class ActorLayer {
   private readonly views = new Map<ActorId, ActorView>();
   private running = 0;
   private latest: GameState | null = null;
+  /** Клетки, которые сейчас видит команда (posKey). Монстров вне их не показываем. */
+  private visible: ReadonlySet<string> = new Set();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -60,10 +63,13 @@ export class ActorLayer {
     return this.views.get(id)?.sprite;
   }
 
-  sync(state: GameState): void {
+  sync(state: GameState, visible: ReadonlySet<string> = this.visible): void {
     this.latest = state;
+    this.visible = visible;
     for (const actor of Object.values(state.actors)) {
       if (!this.views.has(actor.id)) this.add(actor);
+      const view = this.views.get(actor.id);
+      if (view) this.setShown(view, actor.kind === 'player' || visible.has(posKey(actor.pos)));
     }
     if (this.busy) return;
 
@@ -172,6 +178,14 @@ export class ActorLayer {
     this.followSprites();
   }
 
+  /** Туман войны: монстра вне поля зрения команды не видно — ни спрайта, ни полоски HP. */
+  private setShown(view: ActorView, shown: boolean): void {
+    view.sprite.setVisible(shown);
+    view.hpBack.setVisible(shown);
+    view.hpFill.setVisible(shown);
+    if (!shown) view.mark?.setVisible(false);
+  }
+
   private remove(id: ActorId, view: ActorView): void {
     view.sprite.destroy();
     view.hpBack.destroy();
@@ -186,7 +200,7 @@ export class ActorLayer {
    */
   private floatDamage(id: ActorId, amount: number): void {
     const sprite = this.spriteOf(id);
-    if (!sprite) return;
+    if (!sprite?.visible) return; // урон по невидимому — не показываем
     const text = this.ui.world(
       this.scene.add
         .text(sprite.x, sprite.y, `-${amount}`, {

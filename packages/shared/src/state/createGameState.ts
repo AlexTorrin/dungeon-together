@@ -1,5 +1,6 @@
 import { MONSTERS, PLAYER_MAX_HP } from '../config/actors';
 import { DIRECTIONS, step } from '../direction';
+import { withExplored } from '../map/fov';
 import { canStep } from '../map/pathfinding';
 import { seedRng } from '../rng';
 import { allocateId } from './ids';
@@ -77,7 +78,7 @@ export function createGameState(
     items[id] = { id, type, pos };
   });
 
-  return {
+  const state: GameState = {
     map: room.map,
     actors,
     items,
@@ -86,5 +87,7 @@ export function createGameState(
     status: 'playing',
     rng: seedRng(seed),
     nextId,
+    explored: room.map.tiles.map(() => false),
   };
+  return { ...state, explored: withExplored(state) };
 }

@@ -47,7 +47,9 @@ export {
 export { DEMO_ROOM } from './map/demoMap';
 export { generateLevel } from './map/generateLevel';
 export { DIRECTIONS, delta, directionTo, isDiagonal, isDirection, step } from './direction';
-export { chebyshev, hasLineOfSight, lineCells, posKey, samePos } from './map/geometry';
+export { chebyshev, posKey, samePos } from './map/geometry';
+export { canSee, teamVision, visibleFrom } from './map/fov';
+export { VIEW_RADIUS } from './config/vision';
 export { canStep, findPath } from './map/pathfinding';
 export { attackableCells, canAttack, weaponOf } from './rules/combat';
 export { UNARMED, WEAPONS, type WeaponStats } from './config/weapons';

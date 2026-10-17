@@ -8,11 +8,13 @@ import {
   isInBounds,
   samePos,
   step,
+  teamVision,
   weaponOf,
   type Action,
   type Actor,
   type Direction,
   type GameEvent,
+  type GameMap,
   type GameState,
   type PlayerId,
   type Position,
@@ -25,6 +27,7 @@ import { randomSeed } from '../game/randomSeed';
 import { initialAim, moveAim, nextAimTarget } from '../input/aim';
 import { directionFromKeys } from '../input/keyDirection';
 import { ActorLayer } from '../render/ActorLayer';
+import { FogLayer } from '../render/FogLayer';
 import { IntentLayer, type Intent } from '../render/IntentLayer';
 import { ItemLayer } from '../render/ItemLayer';
 import { MapView } from '../render/mapView';
@@ -96,6 +99,9 @@ export class GameScene extends Phaser.Scene {
   private title = '';
   private actors!: ActorLayer;
   private items!: ItemLayer;
+  private fog!: FogLayer;
+  /** Клетки, которые сейчас видит команда (posKey); пересчитывается при каждом новом состоянии. */
+  private visible: ReadonlySet<string> = new Set();
   private intents!: IntentLayer;
   private popup!: ActionPopup;
   private status!: Phaser.GameObjects.Text;
@@ -134,12 +140,15 @@ export class GameScene extends Phaser.Scene {
     this.ui = ui;
     const { state } = this.session;
     new MapView(this, state.map, (obj) => ui.world(obj));
+    this.fog = new FogLayer(this, ui);
     this.items = new ItemLayer(this, ui);
     this.intents = new IntentLayer(this, ui);
     this.actors = new ActorLayer(this, ui, new Map([[LOCAL_ID, LOCAL_LOOK]]), () => this.onIdle());
     this.popup = new ActionPopup(this, ui);
-    this.items.sync(state);
-    this.actors.sync(state);
+    this.visible = teamVision(state);
+    this.fog.draw(state, this.visible);
+    this.items.sync(state, this.visible);
+    this.actors.sync(state, this.visible);
 
     const { map } = state;
     // Сверху запас на высоту HUD, чтобы верхний ряд карты можно было увидеть из-под панели.
@@ -314,6 +323,10 @@ export class GameScene extends Phaser.Scene {
     const me = this.me();
     if (!tile || !me || !this.canChoose()) return;
     this.aim = null;
+    if (!this.session.state.explored[tile.y * this.session.state.map.width + tile.x]) {
+      this.ui.toast('Туда ещё не смотрели');
+      return;
+    }
     const { map } = this.session.state;
     const options: PopupOption[] = [];
     const offer = (label: string, action: Action, goal: Position | null): void => {
@@ -336,7 +349,7 @@ export class GameScene extends Phaser.Scene {
         if (canAttack(map, me, tile)) offer('Ударить', { type: 'attack', target: tile }, null);
       };
       if (occupied) attack();
-      const path = findPath(map, me.pos, tile);
+      const path = findPath(this.knownMap(), me.pos, tile);
       const first = path?.[0];
       const direction = first ? directionTo(me.pos, first) : null;
       if (path && direction) {
@@ -395,9 +408,7 @@ export class GameScene extends Phaser.Scene {
   private continueToGoal(): void {
     const me = this.me();
     if (!this.goal || !me || this.sent) return;
-    const path = samePos(me.pos, this.goal)
-      ? null
-      : findPath(this.session.state.map, me.pos, this.goal);
+    const path = samePos(me.pos, this.goal) ? null : findPath(this.knownMap(), me.pos, this.goal);
     const first = path?.[0];
     const direction = first ? directionTo(me.pos, first) : null;
     if (direction) this.draft = { type: 'move', direction };
@@ -436,14 +447,16 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
-    this.actors.sync(next);
+    this.visible = teamVision(next);
+    this.fog.draw(next, this.visible);
+    this.actors.sync(next, this.visible);
     if (!this.actors.busy) this.onIdle();
     else this.redraw();
   }
 
   /** Все анимации хода закончились. */
   private onIdle(): void {
-    this.items.sync(this.session.state);
+    this.items.sync(this.session.state, this.visible);
     this.continueToGoal();
     this.redraw();
   }
@@ -470,6 +483,15 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- Отрисовка ----------
 
+  /**
+   * Карта, какой её знает команда: неисследованные клетки считаются стенами. По ней
+   * прокладываем путь мыши — иначе путь выдал бы планировку, скрытую туманом.
+   */
+  private knownMap(): GameMap {
+    const { map, explored } = this.session.state;
+    return { ...map, tiles: map.tiles.map((tile, i) => (explored[i] ? tile : 'wall')) };
+  }
+
   private me(): Actor | undefined {
     return this.session.state.actors[LOCAL_ID];
   }
@@ -489,7 +511,7 @@ export class GameScene extends Phaser.Scene {
       if (action) {
         // Путь до цели мыши после этого шага — чтобы было видно, куда идём дальше.
         const after = action.type === 'move' ? step(me.pos, action.direction) : null;
-        const rest = after && this.goal ? findPath(state.map, after, this.goal) : null;
+        const rest = after && this.goal ? findPath(this.knownMap(), after, this.goal) : null;
         intents.push({
           from: me.pos,
           action,

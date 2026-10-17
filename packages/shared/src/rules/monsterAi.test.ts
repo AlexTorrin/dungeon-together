@@ -69,6 +69,21 @@ describe('chooseMonsterAction', () => {
     expect(findPath(state.map, after, { x: 1, y: 1 })).toHaveLength(3);
   });
 
+  it('does not notice a player it cannot see, even if the path is short', () => {
+    const WALLED = `
+#########
+#@..#...#
+#...#...#
+#.......#
+#########
+`;
+    // Игрок за стеной (5,1), монстр в (3,1): по пути 4–5 шагов, но прямой видимости нет.
+    const state = makeState(WALLED, [playerAt('p1', 5, 1), monsterAt('m', 'skull', 3, 1)]);
+    expect(chooseMonsterAction(state, monsterOf(state, 'm'), seedRng(1))[0]).toEqual({
+      type: 'wait',
+    });
+  });
+
   it('waits when nobody is around', () => {
     const state = makeState(ARENA, [playerAt('p1', 1, 1), monsterAt('m', 'skull', 14, 3)]);
     expect(chooseMonsterAction(state, monsterOf(state, 'm'), seedRng(1))[0]).toEqual({

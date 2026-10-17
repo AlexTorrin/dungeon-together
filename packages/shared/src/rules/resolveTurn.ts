@@ -1,4 +1,5 @@
 import type { GameEvent } from '../commands';
+import { withExplored } from '../map/fov';
 import { samePos } from '../map/geometry';
 import type { Action, Actor, ActorId, GameState, GameStatus, GroundItem, ItemId } from '../types';
 import type { CommandResult } from './applyCommand';
@@ -16,6 +17,7 @@ import { resolveMoves, type ActorIntent } from './resolveMoves';
  *    шагнул под удар — получил. Все удары одновременны: убитый в этот ход тоже успевает ударить.
  * 5. Смерти: hp ≤ 0 — актор удаляется, его оружие падает на пол.
  * 6. Конец игры: игроков не осталось — поражение; убит последний монстр — победа.
+ * 7. Память команды (explored) пополняется тем, что игроки видят с новых позиций.
  */
 export function resolveTurn(state: GameState): CommandResult {
   const events: GameEvent[] = [];
@@ -117,18 +119,16 @@ export function resolveTurn(state: GameState): CommandResult {
   events.push({ type: 'turnResolved', turn: state.turn });
   if (status !== 'playing') events.push({ type: 'gameOver', status });
 
-  return {
-    state: {
-      ...state,
-      actors: Object.fromEntries(actors),
-      items: Object.fromEntries(items),
-      rng,
-      status,
-      pendingActions: {},
-      turn: state.turn + 1,
-    },
-    events,
+  const next: GameState = {
+    ...state,
+    actors: Object.fromEntries(actors),
+    items: Object.fromEntries(items),
+    rng,
+    status,
+    pendingActions: {},
+    turn: state.turn + 1,
   };
+  return { state: { ...next, explored: withExplored(next) }, events };
 }
 
 function nextStatus(before: GameState, after: readonly Actor[]): GameStatus {

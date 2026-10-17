@@ -102,4 +102,9 @@ export interface GameState {
   readonly rng: number;
   /** Следующий номер для id новых сущностей (монстров, предметов): id не повторяются. */
   readonly nextId: number;
+  /**
+   * Память команды: клетки, которые кто-то из игроков уже видел (индекс y * width + x).
+   * Что видно прямо сейчас, не хранится — это выводится из позиций (map/fov.ts).
+   */
+  readonly explored: readonly boolean[];
 }

@@ -1,5 +1,8 @@
 import { AGGRO_RADIUS, AI_AIM_AT_CURRENT_CHANCE, ITEM_SEARCH_RADIUS } from '../config/ai';
+import { VIEW_RADIUS } from '../config/vision';
 import { DIRECTIONS, directionTo, step } from '../direction';
+import { visibleFrom } from '../map/fov';
+import { posKey } from '../map/geometry';
 import { findPath, canStep } from '../map/pathfinding';
 import { chance, nextInt, type RngState } from '../rng';
 import type { Action, Actor, GameState, MonsterActor, Position } from '../types';
@@ -55,7 +58,8 @@ function aimAt(
 
 /**
  * ИИ монстра. Видит только состояние на начало хода — выбор игроков в этом ходу ему
- * неизвестен, так что бот, как и игрок, угадывает. Правила для него те же, что для игроков.
+ * неизвестен, так что бот, как и игрок, угадывает. Правила для него те же, что для игроков:
+ * замечает игроков и предметы, только если видит их (то же поле зрения, что у игроков).
  *
  * 1. Игрок в досягаемости удара → бьёт (туда, где тот стоит, или куда может отойти).
  * 2. Без оружия и предмет рядом → идёт за предметом.
@@ -67,7 +71,10 @@ export function chooseMonsterAction(
   monster: MonsterActor,
   rng: RngState,
 ): readonly [Action, RngState] {
-  const players = Object.values(state.actors).filter((a) => a.kind === 'player');
+  const sees = visibleFrom(state.map, monster.pos, VIEW_RADIUS);
+  const players = Object.values(state.actors).filter(
+    (a) => a.kind === 'player' && sees.has(posKey(a.pos)),
+  );
 
   const inReach = players.filter((p) => canAttack(state.map, monster, p.pos));
   const victim = nearest(state, monster.pos, inReach, (p) => p.pos, Number.POSITIVE_INFINITY);
@@ -77,7 +84,7 @@ export function chooseMonsterAction(
   }
 
   if (!monster.weapon) {
-    const items = Object.values(state.items);
+    const items = Object.values(state.items).filter((i) => sees.has(posKey(i.pos)));
     const item = nearest(state, monster.pos, items, (i) => i.pos, ITEM_SEARCH_RADIUS);
     if (item) return [stepAlong(monster.pos, item.path), rng];
   }
