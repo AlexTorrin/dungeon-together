@@ -24,6 +24,8 @@ export const INTENT_COLORS = {
   attack: 0xe0503a,
   reach: 0xe0503a,
   hover: 0xffffff,
+  cursor: 0xffd27f,
+  cursorBlocked: 0x8a7a80,
 } as const;
 
 export const EDITOR = {

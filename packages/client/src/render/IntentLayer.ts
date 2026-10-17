@@ -22,6 +22,8 @@ export interface IntentScene {
   readonly hoverAttackable: boolean;
   /** Клетки, которые можно ударить, — подсвечиваются, когда игрок выбирает удар. */
   readonly reach: readonly Position[];
+  /** Курсор прицела с клавиатуры; valid — можно ли туда ударить. */
+  readonly cursor: { readonly pos: Position; readonly valid: boolean } | null;
 }
 
 const ALPHA = { confirmed: 1, draft: 0.55, path: 0.45, reach: 0.14, hover: 0.7 } as const;
@@ -35,7 +37,7 @@ export class IntentLayer {
     this.g = ui.world(scene.add.graphics().setDepth(DEPTH.intents));
   }
 
-  draw({ intents, hover, hoverAttackable, reach }: IntentScene): void {
+  draw({ intents, hover, hoverAttackable, reach, cursor }: IntentScene): void {
     const g = this.g.clear();
 
     g.fillStyle(INTENT_COLORS.reach, ALPHA.reach);
@@ -53,6 +55,26 @@ export class IntentLayer {
     }
 
     for (const intent of intents) this.drawIntent(intent);
+    if (cursor) this.drawCursor(cursor.pos, cursor.valid);
+  }
+
+  /** Уголки вокруг клетки — курсор прицела. Серый — туда не ударить. */
+  private drawCursor({ x, y }: Position, valid: boolean): void {
+    const left = x * TILE_SIZE;
+    const top = y * TILE_SIZE;
+    const right = left + TILE_SIZE;
+    const bottom = top + TILE_SIZE;
+    const len = 4;
+    this.g.lineStyle(1.5, valid ? INTENT_COLORS.cursor : INTENT_COLORS.cursorBlocked, 1);
+    for (const [cx, cy, dx, dy] of [
+      [left, top, 1, 1],
+      [right, top, -1, 1],
+      [left, bottom, 1, -1],
+      [right, bottom, -1, -1],
+    ] as const) {
+      this.g.lineBetween(cx, cy, cx + dx * len, cy);
+      this.g.lineBetween(cx, cy, cx, cy + dy * len);
+    }
   }
 
   private drawIntent({ from, action, color, confirmed, path }: Intent): void {

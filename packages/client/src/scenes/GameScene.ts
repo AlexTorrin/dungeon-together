@@ -21,6 +21,7 @@ import { ANIMATIONS, lookOf } from '../assetKeys';
 import { INTENT_COLORS, TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import type { GameSession } from '../game/GameSession';
 import { LocalGame } from '../game/LocalGame';
+import { initialAim, moveAim, nextAimTarget } from '../input/aim';
 import { directionFromKeys } from '../input/keyDirection';
 import { ActorLayer } from '../render/ActorLayer';
 import { IntentLayer, type Intent } from '../render/IntentLayer';
@@ -43,6 +44,8 @@ const KEYS = {
   wait: [K.SPACE],
   confirm: [K.ENTER],
   attack: [K.SHIFT],
+  aim: [K.F],
+  nextTarget: [K.TAB],
   back: [K.ESC],
 } as const;
 type KeyRole = keyof typeof KEYS;
@@ -111,6 +114,8 @@ export class GameScene extends Phaser.Scene {
   /** Клетка, к которой идём мышью; шаги к ней выбираются сами, ход за ходом. */
   private goal: Position | null = null;
   private hover: Position | null = null;
+  /** Курсор прицела с клавиатуры (F); null — прицел выключен. */
+  private aim: Position | null = null;
   private gameOver = false;
 
   constructor() {
@@ -125,6 +130,7 @@ export class GameScene extends Phaser.Scene {
     this.sent = null;
     this.goal = null;
     this.hover = null;
+    this.aim = null;
     this.gameOver = false;
   }
 
@@ -161,7 +167,7 @@ export class GameScene extends Phaser.Scene {
       12,
       10,
       'WASD/стрелки — шаг (две клавиши — по диагонали) · Shift+направление — удар рядом · ' +
-        'Пробел — ждать',
+        'F — прицел · Пробел — ждать',
       UI_COLORS.muted,
     );
     ui.text(
@@ -223,11 +229,17 @@ export class GameScene extends Phaser.Scene {
 
   private onKey(code: number): void {
     if (this.is('back', code)) {
-      if (this.gameOver || (!this.popup.isOpen && !this.draft)) this.goBack();
+      if (this.gameOver || (!this.popup.isOpen && !this.draft && !this.aim)) this.goBack();
       else this.cancel();
       return;
     }
     if (!this.canChoose()) return;
+    if (this.is('aim', code)) {
+      if (this.aim) this.cancel();
+      else this.enterAim();
+      return;
+    }
+    if (this.aim && this.onAimKey(code)) return;
 
     if (this.is('confirm', code)) {
       this.confirm();
@@ -246,6 +258,50 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // ---------- Прицел с клавиатуры ----------
+
+  private enterAim(): void {
+    const me = this.me();
+    if (!me) return;
+    this.popup.hide();
+    this.setAim(initialAim(this.session.state, me));
+  }
+
+  /** Клавиши в режиме прицела; false — клавиша не про прицел, пусть обработается как обычно. */
+  private onAimKey(code: number): boolean {
+    const me = this.me();
+    if (!me || !this.aim) return false;
+    if (this.is('attack', code)) return true; // Shift в прицеле ничего не делает
+    if (this.is('confirm', code)) {
+      this.confirm();
+      return true;
+    }
+    if (this.is('nextTarget', code)) {
+      const next = nextAimTarget(this.session.state, me, this.aim);
+      if (next) this.setAim(next);
+      else this.ui.toast('Некого бить в досягаемости');
+      return true;
+    }
+    // Курсор ходит по одной клетке за нажатие: диагональ — две клавиши по очереди.
+    const direction = (['up', 'down', 'left', 'right'] as const).find((d) => this.is(d, code));
+    if (direction) {
+      this.setAim(moveAim(this.session.state, me, this.aim, direction));
+      return true;
+    }
+    this.aim = null; // Пробел и прочее — выходим из прицела и работаем как обычно
+    return false;
+  }
+
+  /** Курсор на клетку; если туда можно ударить — удар сразу становится черновиком. */
+  private setAim(pos: Position): void {
+    const me = this.me();
+    this.aim = pos;
+    this.draft =
+      me && canAttack(this.session.state.map, me, pos) ? { type: 'attack', target: pos } : null;
+    this.goal = null;
+    this.redraw();
+  }
+
   private chooseDirection(direction: Direction): void {
     const me = this.me();
     if (!me) return;
@@ -262,6 +318,7 @@ export class GameScene extends Phaser.Scene {
   private onTileClick(tile: Position | null): void {
     const me = this.me();
     if (!tile || !me || !this.canChoose()) return;
+    this.aim = null;
     const { map } = this.session.state;
     const options: PopupOption[] = [];
     const offer = (label: string, action: Action, goal: Position | null): void => {
@@ -316,6 +373,7 @@ export class GameScene extends Phaser.Scene {
 
   private cancel(): void {
     this.popup.hide();
+    this.aim = null;
     if (!this.sent) {
       this.draft = null;
       this.goal = null;
@@ -327,9 +385,10 @@ export class GameScene extends Phaser.Scene {
     this.popup.hide();
     if (!this.canChoose()) return;
     if (!this.draft) {
-      this.ui.toast('Сначала выберите действие');
+      this.ui.toast(this.aim ? 'Сюда не ударить' : 'Сначала выберите действие');
       return;
     }
+    this.aim = null;
     this.sent = this.draft;
     this.draft = null;
     // Ответ придёт в onEvents через подписку — не сразу, как и по сети.
@@ -453,13 +512,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     const choosingAttack =
-      this.held('attack') || this.draft?.type === 'attack' || this.popup.isOpen;
+      this.held('attack') || this.draft?.type === 'attack' || this.popup.isOpen || !!this.aim;
     const showReach = me && !this.sent && !this.gameOver && choosingAttack;
     this.intents.draw({
       intents,
       hover: this.gameOver ? null : this.hover,
       hoverAttackable: !!me && !!this.hover && canAttack(state.map, me, this.hover),
       reach: showReach ? attackableCells(state.map, me) : [],
+      cursor: this.aim && me ? { pos: this.aim, valid: canAttack(state.map, me, this.aim) } : null,
     });
     this.refreshStatus();
   }
@@ -476,9 +536,13 @@ export class GameScene extends Phaser.Scene {
     const head = `Ход ${turn} · HP ${me.hp}/${me.maxHp} · Оружие: ${weapon} (урон ${damage}, дальность ${range})`;
     const choice = this.sent
       ? `Выбрано: ${describe(this.sent)} ✓ — ждём остальных`
-      : this.draft
-        ? `Выбрано: ${describe(this.draft)} — Enter, чтобы подтвердить`
-        : 'Выберите действие';
+      : this.aim
+        ? `Прицел: WASD — двигать, Tab — следующая цель, Enter — ударить, F/Esc — выйти${
+            this.draft ? '' : ' (сюда не ударить)'
+          }`
+        : this.draft
+          ? `Выбрано: ${describe(this.draft)} — Enter, чтобы подтвердить`
+          : 'Выберите действие';
     this.status.setText(`${head}\n${choice}`);
   }
 
