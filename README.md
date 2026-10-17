@@ -70,9 +70,9 @@ packages/
   client/    Phaser + Vite: сцены, рендер, ввод, UI. Никакой игровой логики
   server/    (ещё нет) Colyseus — появится на шаге 6 roadmap
 assets/      графика из 2D Pixel Dungeon Asset Pack v2.0 (не редактируем; описание — docs/assets.md)
-  custom/    свои спрайты в стиле пака (нож)
+  custom/    свои спрайты в стиле пака (нож, стены под все сочетания соседей)
 docs/        архитектура и заметки
-tools/       sprites/ — скрипты, которые рисуют свои спрайты (node tools/sprites/knife.mjs)
+tools/       sprites/ — скрипты, которые рисуют свои спрайты (knife.mjs, walls.mjs)
 .claude/     скил run-game для запуска и проверки игры агентом (Claude Code)
 ```
 

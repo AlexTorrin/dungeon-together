@@ -1,32 +1,52 @@
 import { getTile, type GameMap, type Position } from '@dt/shared';
-import { TILESET, type TileKind } from './tilesetIndex';
+import { TILESET } from './tilesetIndex';
 
 /**
- * Автотайлинг: тип клетки в shared — просто 'wall'/'floor', а какой именно спрайт стены
- * рисовать (угол, верхняя грань, боковая) решается по соседям. Это чисто визуальная задача,
- * поэтому живёт в клиенте.
+ * Автотайлинг: в shared клетка — просто 'wall' или 'floor', а какой спрайт рисовать, решает
+ * клиент по соседям. Это чисто визуальная задача.
  *
- * Возвращает null для «глухой» стены, у которой нет соседнего пола — её не рисуем, там фон.
+ * Стены — по битовой маске (bitmask autotiling): бит соседа = «там пол». Маска 0–255
+ * однозначно задаёт вид стены; атлас со всеми масками собирает tools/sprites/walls.mjs
+ * из кусков тайлсета пака, кадр в нём = маска × WALL_VARIANTS + вариант кладки.
  */
-export function pickTileKind(map: GameMap, { x, y }: Position): TileKind | null {
-  const floorAt = (dx: number, dy: number): boolean =>
-    getTile(map, { x: x + dx, y: y + dy }) === 'floor';
+export const WALL_BITS = {
+  n: 1,
+  e: 2,
+  s: 4,
+  w: 8,
+  ne: 16,
+  se: 32,
+  sw: 64,
+  nw: 128,
+} as const;
 
-  if (floorAt(0, 0)) return floorAt(0, -1) ? 'floor' : 'floorUnderWall';
+/** Вариантов кладки на маску в атласе — должно совпадать с VARIANTS в walls.mjs. */
+export const WALL_VARIANTS = 4;
 
-  const n = floorAt(0, -1);
-  const s = floorAt(0, 1);
-  if (s && n) return 'wallBetween';
-  if (s) return 'wallTop';
-  if (n) return 'wallBottom';
-  if (floorAt(1, 0)) return 'wallLeft';
-  if (floorAt(-1, 0)) return 'wallRight';
-  if (floorAt(1, 1)) return 'cornerTopLeft';
-  if (floorAt(-1, 1)) return 'cornerTopRight';
-  if (floorAt(1, -1)) return 'cornerBottomLeft';
-  if (floorAt(-1, -1)) return 'cornerBottomRight';
-  return null;
+const NEIGHBOURS: readonly (readonly [dx: number, dy: number, bit: number])[] = [
+  [0, -1, WALL_BITS.n],
+  [1, 0, WALL_BITS.e],
+  [0, 1, WALL_BITS.s],
+  [-1, 0, WALL_BITS.w],
+  [1, -1, WALL_BITS.ne],
+  [1, 1, WALL_BITS.se],
+  [-1, 1, WALL_BITS.sw],
+  [-1, -1, WALL_BITS.nw],
+];
+
+/** Где вокруг клетки пол — битовая маска по 8 соседям. */
+export function floorMask(map: GameMap, { x, y }: Position): number {
+  let mask = 0;
+  for (const [dx, dy, bit] of NEIGHBOURS) {
+    if (getTile(map, { x: x + dx, y: y + dy }) === 'floor') mask |= bit;
+  }
+  return mask;
 }
+
+/** Что рисовать в клетке: кадр тайлсета пака (пол) или атласа стен; null — пустота. */
+export type TilePick =
+  | { readonly sheet: 'tileset'; readonly frame: number }
+  | { readonly sheet: 'walls'; readonly frame: number };
 
 /** Стабильный псевдослучайный хеш координат, чтобы варианты тайлов не «мигали» между кадрами. */
 function hashPosition({ x, y }: Position): number {
@@ -35,9 +55,21 @@ function hashPosition({ x, y }: Position): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
-export function pickTileIndex(map: GameMap, pos: Position): number | null {
-  const kind = pickTileKind(map, pos);
-  if (kind === null) return null;
-  const variants: readonly number[] = TILESET[kind];
-  return variants[hashPosition(pos) % variants.length] ?? null;
+export function pickTile(map: GameMap, pos: Position): TilePick | null {
+  const hash = hashPosition(pos);
+  const mask = floorMask(map, pos);
+  if (getTile(map, pos) === 'floor') {
+    const variants = mask & WALL_BITS.n ? TILESET.floor : TILESET.floorUnderWall;
+    return { sheet: 'tileset', frame: variants[hash % variants.length] ?? TILESET.floor[0] };
+  }
+  // Глухая стена без пола вокруг не рисуется — там фон.
+  if (mask === 0) return null;
+  return { sheet: 'walls', frame: mask * WALL_VARIANTS + (hash % WALL_VARIANTS) };
+}
+
+/** Видна ли у стены кирпичная грань (пол снизу, не тонкая перегородка) — сюда вешаем факелы. */
+export function hasWallFace(map: GameMap, pos: Position): boolean {
+  if (getTile(map, pos) === 'floor') return false;
+  const mask = floorMask(map, pos);
+  return (mask & WALL_BITS.s) !== 0 && (mask & WALL_BITS.n) === 0;
 }

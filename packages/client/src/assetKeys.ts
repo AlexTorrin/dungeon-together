@@ -4,6 +4,7 @@ import type { WeaponType } from '@dt/shared';
 export const TEXTURES = {
   tileset: 'tileset',
   characters: 'characters',
+  walls: 'walls',
 } as const;
 
 export const ASSET_PATHS = {
@@ -12,6 +13,8 @@ export const ASSET_PATHS = {
   arrowItem: 'items and trap_animation/arrow/Just_arrow.png',
   /** Нарисован для проекта — в паке ножа нет (см. docs/assets.md). */
   knifeItem: 'custom/knife.png',
+  /** Стены для всех сочетаний соседей, собраны из тайлсета пака (tools/sprites/walls.mjs). */
+  walls: 'custom/walls.png',
 } as const;
 
 export interface FrameAnimation {

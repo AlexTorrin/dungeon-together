@@ -2,10 +2,15 @@ import Phaser from 'phaser';
 import type { GameMap, Position } from '@dt/shared';
 import { ANIMATIONS, TEXTURES, firstFrame } from '../assetKeys';
 import { TILE_SIZE } from '../config';
-import { pickTileIndex, pickTileKind } from './autotile';
+import { hasWallFace, pickTile } from './autotile';
 
 /** Каждый N-й участок верхней стены получает факел — чисто декоративно. */
 const TORCH_EVERY = 4;
+/**
+ * С какого номера в тайлмапе идут кадры атласа стен. Один слой может брать тайлы из
+ * нескольких тайлсетов: у каждого свой диапазон номеров (gid). У тайлсета пака их 100 (0–99).
+ */
+const WALLS_FIRST_GID = 1000;
 
 export function tileCenter({ x, y }: Position): [number, number] {
   return [x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2];
@@ -39,13 +44,23 @@ export class MapView {
       tileHeight: TILE_SIZE,
     });
     const tileset = tilemap.addTilesetImage(TEXTURES.tileset);
-    const ground = tileset && tilemap.createBlankLayer('ground', tileset);
+    const walls = tilemap.addTilesetImage(
+      TEXTURES.walls,
+      TEXTURES.walls,
+      TILE_SIZE,
+      TILE_SIZE,
+      0,
+      0,
+      WALLS_FIRST_GID,
+    );
+    const ground = tileset && walls && tilemap.createBlankLayer('ground', [tileset, walls]);
     if (!ground) throw new Error('Failed to create tilemap layer');
 
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
-        const index = pickTileIndex(map, { x, y });
-        if (index !== null) ground.putTileAt(index, x, y);
+        const tile = pickTile(map, { x, y });
+        if (!tile) continue;
+        ground.putTileAt(tile.sheet === 'walls' ? WALLS_FIRST_GID + tile.frame : tile.frame, x, y);
       }
     }
     // Новый слой должен быть под героем/оверлеями, созданными раньше.
@@ -59,7 +74,7 @@ export class MapView {
     for (let y = 0; y < map.height; y++) {
       let run = 0;
       for (let x = 0; x < map.width; x++) {
-        if (pickTileKind(map, { x, y }) !== 'wallTop') {
+        if (!hasWallFace(map, { x, y })) {
           run = 0;
           continue;
         }
