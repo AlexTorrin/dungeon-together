@@ -83,5 +83,6 @@ tools/       sprites/ — скрипты, которые рисуют свои �
 ## Документация
 
 - [docs/architecture.md](docs/architecture.md) — как устроены логика, ходы, рендер и сцены.
+- [docs/game-design.md](docs/game-design.md) — правила, к которым идём: очки действия, оружие, инвентарь, монеты, магазин.
 - [docs/assets.md](docs/assets.md) — что лежит в `assets/` и какие тайлы/спрайты где используются.
 - [CLAUDE.md](CLAUDE.md) — правила проекта и roadmap (читает и ИИ-ассистент).
