@@ -1,9 +1,7 @@
 import type { Command, GameEvent } from '../commands';
-import { BACKPACK_SIZE } from '../config/inventory';
 import { DIFFICULTIES, type Difficulty } from '../config/level';
-import { WEAPONS } from '../config/weapons';
-import type { Loadout } from '../hub/profile';
-import type { GameState, PlayerId, WeaponType } from '../types';
+import { parseToken } from '../hub/actions';
+import type { GameState, PlayerId } from '../types';
 
 /**
  * Протокол между клиентом и сервером (Colyseus-комната `dungeon`). Только типы и разбор
@@ -27,9 +25,13 @@ export interface CreateOptions {
 /** Опции при входе в комнату (каждый игрок). */
 export interface JoinOptions {
   readonly name: string;
-  /** С чем игрок идёт в забег — пока из профиля в браузере (шаг 9b перенесёт профиль на сервер). */
-  readonly loadout: Loadout;
+  /** Токен игрока: по нему сервер находит профиль — снаряжение для забега и куда вернуть добычу. */
+  readonly token: string;
 }
+
+/** HTTP-маршруты лагеря на том же сервере; токен — в заголовке `Authorization: Bearer …`. */
+export const PROFILE_PATH = '/profile';
+export const PROFILE_ACTION_PATH = '/profile/action';
 
 export interface LobbyPlayer {
   readonly playerId: PlayerId;
@@ -73,9 +75,6 @@ const isObject = (value: unknown): value is Fields =>
 const field = (obj: Fields, name: string): unknown =>
   Object.hasOwn(obj, name) ? obj[name] : undefined;
 
-const isWeaponType = (value: unknown): value is WeaponType =>
-  typeof value === 'string' && Object.hasOwn(WEAPONS, value);
-
 export function parseCreateOptions(raw: unknown): CreateOptions {
   const difficulty = isObject(raw) ? field(raw, 'difficulty') : undefined;
   return {
@@ -86,27 +85,17 @@ export function parseCreateOptions(raw: unknown): CreateOptions {
   };
 }
 
-/** Снаряжение: оружие в руках (или null) и рюкзак не больше BACKPACK_SIZE. Не подходит — пусто. */
-export function parseLoadout(raw: unknown): Loadout {
-  const empty: Loadout = { weapon: null, backpack: [] };
-  if (!isObject(raw)) return empty;
-  const weapon = field(raw, 'weapon');
-  const backpack = field(raw, 'backpack');
-  if (weapon !== null && !isWeaponType(weapon)) return empty;
-  if (!Array.isArray(backpack) || backpack.length > BACKPACK_SIZE) return empty;
-  if (!(backpack as readonly unknown[]).every(isWeaponType)) return empty;
-  return { weapon, backpack: [...(backpack as WeaponType[])] };
-}
-
 /** Имя: обрезаем пробелы и длину; пустое — «Игрок». */
 export function parseName(raw: unknown): string {
   const name = typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim() : '';
   return name.slice(0, MAX_NAME_LENGTH) || 'Игрок';
 }
 
-export function parseJoinOptions(raw: unknown): JoinOptions {
-  if (!isObject(raw)) return { name: parseName(undefined), loadout: parseLoadout(undefined) };
-  return { name: parseName(field(raw, 'name')), loadout: parseLoadout(field(raw, 'loadout')) };
+/** Опции входа; null — без годного токена (без него не найти профиль). */
+export function parseJoinOptions(raw: unknown): JoinOptions | null {
+  if (!isObject(raw)) return null;
+  const token = parseToken(field(raw, 'token'));
+  return token ? { name: parseName(field(raw, 'name')), token } : null;
 }
 
 /** Код комнаты из ввода игрока: регистр и пробелы не важны. null — не похоже на код. */

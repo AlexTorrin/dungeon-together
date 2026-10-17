@@ -30,6 +30,9 @@ bash .claude/skills/run-game/scripts/start.sh
 Vite не получает событий с Windows-монтирования), гасит старый процесс на :5173,
 запускает в фоне `vite` (лог — `/tmp/dt-run/vite.log`) и игровой сервер через `tsx` на :2567
 (лог — `/tmp/dt-run/server.log`), ждёт, пока порты ответят.
+Профили игроков сервер хранит в `/tmp/dt-run/ws/packages/server/data/profiles.json` (синхронизация
+его не трогает). Чтобы проверить лагерь с монетами: положить туда профиль под ключом
+`sha256(токен)`, а в браузере — `eval:localStorage.setItem('dt.token.v1', '<токен>')` и перезагрузить.
 
 Остановка: `bash .claude/skills/run-game/scripts/stop.sh` (убивает слушателя порта; **не** используй
 `pkill -f vite` — шаблон совпадает с командной строкой агента и убивает сессию).

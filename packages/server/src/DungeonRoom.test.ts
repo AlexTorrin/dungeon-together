@@ -1,15 +1,24 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client, type Room } from '@colyseus/sdk';
 import type { Server } from '@colyseus/core';
 import { ROOM_NAME, type ServerMessages } from '@dt/shared';
 import { createServer } from './createServer';
+import { ProfileStore } from './ProfileStore';
 
 // Настоящий сервер на свободном порту и настоящие клиенты SDK: проверяем протокол целиком.
 const PORT = 25670 + Math.floor(Math.random() * 100);
 let server: Server;
+let store: ProfileStore;
+const ANYA = 'anya-token-0000000000';
+const BORYA = 'borya-token-000000000';
 
 beforeAll(async () => {
-  server = createServer();
+  store = new ProfileStore(join(mkdtempSync(join(tmpdir(), 'dt-')), 'profiles.json'));
+  await store.set(ANYA, { coins: 3, hands: 'bow', backpack: [], chest: ['sword'] });
+  server = createServer(store);
   await server.listen(PORT);
 });
 afterAll(async () => {
@@ -28,17 +37,22 @@ function next<K extends keyof ServerMessages>(room: Room, type: K): Promise<Serv
   });
 }
 
-const loadout = { weapon: 'bow', backpack: ['knife'] };
-
 describe('DungeonRoom', () => {
+  it('без токена и с тем же токеном второй раз — не войти', async () => {
+    await expect(client().create(ROOM_NAME, { name: 'Аня' })).rejects.toThrow();
+    const host = await client().create(ROOM_NAME, { token: ANYA });
+    await expect(client().joinById(host.roomId, { token: ANYA })).rejects.toThrow();
+    await host.leave();
+  });
+
   it('лобби → старт → ход разрешается, когда планы прислали оба', async () => {
-    const host = await client().create(ROOM_NAME, { difficulty: 'easy', name: 'Аня', loadout });
+    const host = await client().create(ROOM_NAME, { difficulty: 'easy', name: 'Аня', token: ANYA });
     const hostLobby = await next(host, 'lobby');
     expect(hostLobby).toMatchObject({ code: host.roomId, host: 'p1', you: 'p1' });
     expect(host.roomId).toMatch(/^[A-Z]{4}$/);
 
     const lobbyAgain = next(host, 'lobby');
-    const guest = await client().joinById(host.roomId, { name: 'Боря', loadout: 'мусор' });
+    const guest = await client().joinById(host.roomId, { name: 'Боря', token: BORYA });
     const guestLobby = await next(guest, 'lobby');
     expect(guestLobby.you).toBe('p2');
     expect((await lobbyAgain).players.map((p) => p.name)).toEqual(['Аня', 'Боря']);
@@ -50,6 +64,8 @@ describe('DungeonRoom', () => {
     const [{ state }] = await started;
     expect(state.actors['p1']).toMatchObject({ weapon: { type: 'bow' } });
     expect(state.actors['p2']).toMatchObject({ weapon: null, backpack: [] });
+    // Снаряжение забрано из профиля сервером, кошелёк и сундук на месте.
+    expect(store.get(ANYA)).toEqual({ coins: 3, hands: null, backpack: [], chest: ['sword'] });
 
     // playerId из сообщения сервер не слушает: гость не может походить за хоста.
     const hostSees = next(host, 'events');
@@ -71,12 +87,12 @@ describe('DungeonRoom', () => {
   });
 
   it('после старта в комнату не войти, несуществующий код — ошибка', async () => {
-    const host = await client().create(ROOM_NAME, {});
+    const host = await client().create(ROOM_NAME, { token: ANYA });
     const started = next(host, 'started');
     host.send('start', null);
     await started;
-    await expect(client().joinById(host.roomId, {})).rejects.toThrow();
-    await expect(client().joinById('ZZZZ', {})).rejects.toThrow();
+    await expect(client().joinById(host.roomId, { token: BORYA })).rejects.toThrow();
+    await expect(client().joinById('ZZZZ', { token: BORYA })).rejects.toThrow();
     await host.leave();
   });
 });

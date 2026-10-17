@@ -91,10 +91,11 @@ export {
   MAX_PLAYERS,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
+  PROFILE_ACTION_PATH,
+  PROFILE_PATH,
   ROOM_NAME,
   parseCreateOptions,
   parseJoinOptions,
-  parseLoadout,
   parseName,
   parseRoomCode,
   type ClientMessages,
@@ -103,3 +104,12 @@ export {
   type LobbyPlayer,
   type ServerMessages,
 } from './net/protocol';
+export {
+  applyHubAction,
+  isWeaponType,
+  parseHubAction,
+  parseProfile,
+  parseSlot,
+  parseToken,
+  type HubAction,
+} from './hub/actions';

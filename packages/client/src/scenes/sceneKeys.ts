@@ -1,4 +1,4 @@
-import type { Loadout, PlayerId, Room } from '@dt/shared';
+import type { PlayerId, Room } from '@dt/shared';
 import type { NetworkGame } from '../game/NetworkGame';
 
 export const SCENES = {
@@ -32,17 +32,15 @@ interface GameSceneBase {
   readonly back: GameReturn;
 }
 
-/** Одиночная игра: уровень считается прямо в браузере (LocalGame). */
+/** Тренировка (демо, свои комнаты, редактор): уровень считается в браузере, профиль не трогаем. */
 export interface LocalGameData extends GameSceneBase {
   readonly room: Room;
-  /**
-   * Забег из лагеря: с чем герой пришёл (уже убрано из профиля). Добыча после выхода
-   * вернётся в профиль. Нет — тренировка (демо, свои комнаты, редактор): профиль не трогаем.
-   */
-  readonly run?: Loadout;
 }
 
-/** Сетевая игра: уровень на сервере. Это всегда забег — добыча вернётся в профиль. */
+/**
+ * Забег на сервере (в одиночку или с друзьями): снаряжение сервер взял из профиля, туда же
+ * вернёт вынесенное.
+ */
 export interface NetGameData extends GameSceneBase {
   readonly net: {
     readonly session: NetworkGame;

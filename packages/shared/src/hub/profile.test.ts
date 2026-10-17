@@ -77,6 +77,21 @@ describe('забег', () => {
     expect(finishRun(profile, undefined)).toEqual(profile);
   });
 
+  it('вынесенное добавляется, а не заменяет: занятые руки и полный рюкзак — в сундук', () => {
+    const busy: Profile = { coins: 0, hands: 'knife', backpack: ['bow', 'bow', 'bow'], chest: [] };
+    const carried: Carried = {
+      coins: 0,
+      weapon: { id: 'item-1', type: 'sword' },
+      backpack: [{ id: 'item-2', type: 'wand' }],
+    };
+    expect(finishRun(busy, carried)).toEqual({
+      coins: 0,
+      hands: 'knife',
+      backpack: ['bow', 'bow', 'bow', 'sword'],
+      chest: ['wand'],
+    });
+  });
+
   it('герой приходит на уровень с инвентарём из хаба', () => {
     const room = parseRoom('#####\n#@..#\n#####');
     const state = createGameState(room, ['p1', 'p2'], 1, {

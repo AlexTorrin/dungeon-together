@@ -1,41 +1,25 @@
 import Phaser from 'phaser';
-import {
-  DEMO_ROOM,
-  DIFFICULTY_LIST,
-  generateLevel,
-  startRun,
-  type Difficulty,
-  type Loadout,
-  type Room,
-} from '@dt/shared';
-import { randomSeed } from '../game/randomSeed';
+import { DEMO_ROOM, DIFFICULTY_LIST, type Room } from '@dt/shared';
 import { TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import { MapView } from '../render/mapView';
-import { loadProfile, saveProfile } from '../storage/profileStorage';
+import { fetchProfile, profileErrorText } from '../net/profileApi';
 import { deleteRoom, loadRooms } from '../storage/roomStorage';
-import { WEAPON_NAMES } from '../ui/names';
+import { DIFFICULTY_NAMES, WEAPON_NAMES } from '../ui/names';
 import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
+import type { LobbySceneData } from './LobbyScene';
 import { SCENES, type EditorSceneData, type GameSceneData } from './sceneKeys';
 
 const MAX_LISTED_ROOMS = 8;
 
-const DIFFICULTY_NAMES: Readonly<Record<Difficulty, string>> = {
-  easy: 'легко',
-  medium: 'средне',
-  hard: 'трудно',
-};
-
 export class MenuScene extends Phaser.Scene {
-  private ui!: UiOverlay;
-
   constructor() {
     super(SCENES.menu);
   }
 
   create(): void {
     // Фон — демо-подземелье, притушенное полупрозрачной панелью.
-    const ui = (this.ui = new UiOverlay(this));
+    const ui = new UiOverlay(this);
     new MapView(this, DEMO_ROOM.map, (obj) => ui.world(obj));
     const camera = this.cameras.main.setZoom(ZOOM);
     camera.centerOn((DEMO_ROOM.map.width * TILE_SIZE) / 2, (DEMO_ROOM.map.height * TILE_SIZE) / 2);
@@ -58,11 +42,9 @@ export class MenuScene extends Phaser.Scene {
     const dungeons = DIFFICULTY_LIST.map((difficulty) =>
       ui.add(
         new TextButton(this, 0, 0, `▶ ${DIFFICULTY_NAMES[difficulty]}`, () => {
-          const seed = randomSeed();
-          this.startRun(
-            generateLevel(seed, difficulty),
-            `Подземелье #${seed} · ${DIFFICULTY_NAMES[difficulty]}`,
-          );
+          // Забег идёт на сервере (комната на одного): профиль меняет только он.
+          const data: LobbySceneData = { solo: difficulty };
+          this.scene.start(SCENES.lobby, data);
         }),
       ),
     );
@@ -72,14 +54,18 @@ export class MenuScene extends Phaser.Scene {
     ui.text(left, y - 22, 'Новое подземелье — со снаряжением из лагеря:', UI_COLORS.muted);
     layoutRow(dungeons, left, y);
     y += 40;
-    const profile = loadProfile();
-    const backpack = profile.backpack.map((t) => WEAPON_NAMES[t]).join(', ') || 'пусто';
-    ui.text(
-      left,
-      y,
-      `Кошелёк: ${profile.coins} · в руках: ${WEAPON_NAMES[profile.hands ?? 'none']} · рюкзак: ${backpack}`,
-      UI_COLORS.muted,
-    );
+    const summary = ui.text(left, y, 'Профиль: загружаем…', UI_COLORS.muted);
+    fetchProfile()
+      .then((profile) => {
+        if (!summary.active) return; // сцену уже покинули
+        const backpack = profile.backpack.map((t) => WEAPON_NAMES[t]).join(', ') || 'пусто';
+        summary.setText(
+          `Кошелёк: ${profile.coins} · в руках: ${WEAPON_NAMES[profile.hands ?? 'none']} · рюкзак: ${backpack}`,
+        );
+      })
+      .catch((error: unknown) => {
+        if (summary.active) summary.setText(`Профиль: ${profileErrorText(error)}`);
+      });
     y += 28;
     const hub = ui.add(
       new TextButton(this, 0, 0, '⚒ Лагерь: магазин и сундук', () => this.scene.start(SCENES.hub)),
@@ -137,19 +123,10 @@ export class MenuScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.scale.off('resize', onResize));
   }
 
-  private play(room: Room, title: string, run?: Loadout): void {
-    const data: GameSceneData = { room, title, back: { to: 'menu' }, ...(run ? { run } : {}) };
+  /** Тренировка: уровень считается в браузере, профиль не трогается. */
+  private play(room: Room, title: string): void {
+    const data: GameSceneData = { room, title, back: { to: 'menu' } };
     this.scene.start(SCENES.game, data);
-  }
-
-  /** Забег: снаряжение уходит из профиля сразу — вернётся только то, что вынесете. */
-  private startRun(room: Room, title: string): void {
-    const { profile, loadout } = startRun(loadProfile());
-    if (!saveProfile(profile)) {
-      this.ui.toast('Не удалось сохранить профиль — забег не начат');
-      return;
-    }
-    this.play(room, title, loadout);
   }
 
   private openEditor(data: EditorSceneData): void {

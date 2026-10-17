@@ -114,14 +114,23 @@ export function startRun(profile: Profile): {
 
 /**
  * Закончить забег: вынесенное (Carried из state.escaped) возвращается — монеты в кошелёк,
- * оружие в руки и рюкзак. Не вынес (погиб, бросил) — ничего не добавляется.
+ * оружие в руки (если пусты), иначе в рюкзак, а что не влезло — в сундук. Добавляем, а не
+ * заменяем: профиль мог измениться, пока шёл забег (тот же игрок в другой комнате).
+ * Не вынес (погиб, бросил) — ничего не добавляется.
  */
 export function finishRun(profile: Profile, carried: Carried | undefined): Profile {
   if (!carried) return profile;
-  return {
-    ...profile,
-    coins: profile.coins + carried.coins,
-    hands: carried.weapon?.type ?? null,
-    backpack: carried.backpack.map((i) => i.type),
-  };
+  let hands = profile.hands;
+  const backpack = [...profile.backpack];
+  const chest = [...profile.chest];
+  const returned = [
+    ...(carried.weapon ? [carried.weapon.type] : []),
+    ...carried.backpack.map((i) => i.type),
+  ];
+  for (const type of returned) {
+    if (!hands) hands = type;
+    else if (backpack.length < BACKPACK_SIZE) backpack.push(type);
+    else chest.push(type);
+  }
+  return { coins: profile.coins + carried.coins, hands, backpack, chest };
 }

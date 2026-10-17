@@ -6,7 +6,6 @@ import {
   canAttack,
   canOpenDoor,
   createGameState,
-  finishRun,
   isPlanValid,
   simulatePlan,
   WEAPONS,
@@ -50,7 +49,6 @@ import { MapView } from '../render/mapView';
 import { ActionPopup, type PopupOption } from '../ui/ActionPopup';
 import { UiOverlay } from '../ui/UiOverlay';
 import { WEAPON_NAMES } from '../ui/names';
-import { loadProfile, saveProfile } from '../storage/profileStorage';
 import { SCENES, type GameReturn, type GameSceneData } from './sceneKeys';
 
 /** Игрок за этим компьютером в одиночной игре. В сетевой id выдаёт сервер. */
@@ -184,12 +182,10 @@ export class GameScene extends Phaser.Scene {
   /** Курсор прицела с клавиатуры (F); null — прицел выключен. */
   private aim: Position | null = null;
   private gameOver = false;
-  /** Забег из лагеря (а не тренировка): добыча сохраняется в профиль. */
+  /** Забег на сервере (а не тренировка): снаряжение из профиля, бросить — значит потерять. */
   private isRun = false;
   /** Когда Esc в забеге нажали первый раз — второй в течение ABANDON_CONFIRM_MS бросает забег. */
   private abandonAskedAt: number | null = null;
-  /** Итог забега сохранён (true), не удалось (false), ещё нет (null). */
-  private runSettled: boolean | null = null;
   /** Наш игрок: в одиночной игре LOCAL_ID, в сетевой — что выдал сервер. */
   private myId: PlayerId = LOCAL_ID;
   /** Имена других игроков (сетевая игра). */
@@ -205,7 +201,6 @@ export class GameScene extends Phaser.Scene {
     this.back = data.back;
     this.title = data.title;
     this.abandonAskedAt = null;
-    this.runSettled = null;
     if ('net' in data) {
       this.isRun = true;
       this.myId = data.net.playerId;
@@ -213,10 +208,9 @@ export class GameScene extends Phaser.Scene {
       this.playerNames = data.net.names;
       this.net = data.net.session;
     } else {
-      this.isRun = data.run !== undefined;
+      this.isRun = false;
       this.myId = LOCAL_ID;
-      const loadouts = data.run ? { [LOCAL_ID]: data.run } : {};
-      this.session = new LocalGame(createGameState(data.room, [LOCAL_ID], randomSeed(), loadouts));
+      this.session = new LocalGame(createGameState(data.room, [LOCAL_ID], randomSeed()));
       this.playerNames = {};
       this.net = null;
     }
@@ -829,7 +823,6 @@ export class GameScene extends Phaser.Scene {
         this.logEvent(event);
         break;
       case 'exited':
-        if (event.actorId === this.myId) this.settleRun();
         this.logEvent(event);
         break;
       case 'doorOpened': {
@@ -954,27 +947,14 @@ export class GameScene extends Phaser.Scene {
     this.redraw();
   }
 
-  /**
-   * Итог забега — в профиль, ровно один раз: вещи уже убраны из профиля при старте, вынесенное
-   * возвращаем, остальное потеряно. Зовётся при нашем выходе дверью (союзники могут ещё играть,
-   * а мы — уйти из комнаты) и в конце уровня. Возвращает, удалось ли сохранить.
-   */
-  private settleRun(): boolean {
-    if (!this.isRun) return false;
-    if (this.runSettled !== null) return this.runSettled;
-    this.runSettled = saveProfile(finishRun(loadProfile(), this.session.state.escaped[this.myId]));
-    return this.runSettled;
-  }
-
   private showGameOver(status: 'won' | 'lost', reason?: string): void {
-    if (this.gameOver) return; // добычу сохраняем ровно один раз
+    if (this.gameOver) return;
     this.gameOver = true;
     this.draft = [];
     this.goal = null;
     this.popup.hide();
     const { width, height } = this.scale;
     const loot = this.session.state.escaped[this.myId];
-    const saved = this.settleRun();
     const title =
       reason ??
       (status === 'lost' ? 'Вы погибли' : loot ? 'Уровень пройден!' : 'Уровень пройден без вас');
@@ -994,8 +974,8 @@ export class GameScene extends Phaser.Scene {
       : 'Всё, что вы несли, потеряно';
     this.ui.text(width / 2, height / 2 + 26, summary).setOrigin(0.5);
     if (this.isRun && loot) {
-      const note = saved ? 'Добыча — в лагере' : 'Не удалось сохранить добычу (localStorage)';
-      this.ui.text(width / 2, height / 2 + 78, note, UI_COLORS.muted).setOrigin(0.5);
+      // Сервер вернул вынесенное в профиль в тот же момент, как мы вышли.
+      this.ui.text(width / 2, height / 2 + 78, 'Добыча — в лагере', UI_COLORS.muted).setOrigin(0.5);
     }
     this.ui.text(width / 2, height / 2 + 52, 'Esc — выйти', UI_COLORS.muted).setOrigin(0.5);
   }

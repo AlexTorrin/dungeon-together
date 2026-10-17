@@ -6,6 +6,6 @@ WS=/tmp/dt-run/ws
 mkdir -p "$WS"
 rsync -a --delete \
   --exclude node_modules --exclude dist --exclude assets --exclude .claude \
-  --exclude '*.zip' --exclude /client \
+  --exclude '*.zip' --exclude /client --exclude /packages/server/data \
   "$REPO/" "$WS/"
 ln -sfn "$REPO/assets" "$WS/assets"

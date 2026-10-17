@@ -4,7 +4,6 @@ import {
   DIFFICULTY_LIST,
   MAX_PLAYERS,
   parseRoomCode,
-  startRun,
   type Difficulty,
   type JoinOptions,
 } from '@dt/shared';
@@ -12,21 +11,20 @@ import { UI_COLORS } from '../config';
 import { Lobby } from '../net/Lobby';
 import { connectionError, createRoom, joinRoom } from '../net/connection';
 import { loadPlayerName, savePlayerName } from '../storage/playerName';
-import { loadProfile, saveProfile } from '../storage/profileStorage';
-import { WEAPON_NAMES } from '../ui/names';
+import { playerToken } from '../storage/playerToken';
+import { DIFFICULTY_NAMES } from '../ui/names';
 import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
 import { SCENES, type GameSceneData } from './sceneKeys';
 
-const DIFFICULTY_NAMES: Readonly<Record<Difficulty, string>> = {
-  easy: 'легко',
-  medium: 'средне',
-  hard: 'трудно',
-};
-
 export interface LobbySceneData {
   /** Уже подключены (сцена перерисовывается через restart). */
   readonly lobby?: Lobby;
+  /**
+   * Одиночный забег из меню: создать комнату этой сложности и сразу начать. Забег — тоже на
+   * сервере: профиль меняет только он.
+   */
+  readonly solo?: Difficulty;
 }
 
 /**
@@ -37,6 +35,7 @@ export class LobbyScene extends Phaser.Scene {
   private ui!: UiOverlay;
   private lobby: Lobby | null = null;
   private connecting = false;
+  private solo: Difficulty | null = null;
 
   constructor() {
     super(SCENES.lobby);
@@ -44,6 +43,7 @@ export class LobbyScene extends Phaser.Scene {
 
   init(data: LobbySceneData): void {
     this.lobby = data.lobby ?? null;
+    this.solo = data.solo ?? null;
     this.connecting = false;
   }
 
@@ -54,7 +54,7 @@ export class LobbyScene extends Phaser.Scene {
     const left = Math.max(24, width / 2 - 260);
     let y = Math.max(24, height / 2 - 220);
     this.ui.add(
-      this.add.text(left, y, 'Сетевая игра', {
+      this.add.text(left, y, this.solo ? 'Новое подземелье' : 'Сетевая игра', {
         fontFamily: 'monospace',
         fontSize: '32px',
         color: UI_COLORS.text,
@@ -71,7 +71,12 @@ export class LobbyScene extends Phaser.Scene {
         this.onLobbyChange(lobby);
         return;
       }
-      this.drawRoom(lobby, left, y);
+      if (this.solo) this.drawSolo(lobby, left, y);
+      else this.drawRoom(lobby, left, y);
+    } else if (this.solo) {
+      this.ui.text(left, y, 'Готовим подземелье…', UI_COLORS.muted);
+      const difficulty = this.solo;
+      this.connect(() => createRoom({ difficulty, ...this.joinOptions() }));
     } else {
       this.drawConnect(left, y);
     }
@@ -86,18 +91,15 @@ export class LobbyScene extends Phaser.Scene {
 
   private drawConnect(left: number, y: number): void {
     const name = loadPlayerName() ?? 'Игрок';
-    const profile = loadProfile();
     const nameLabel = this.ui.text(0, 0, `Имя: ${name}`);
     nameLabel.setPadding(0, 6, 0, 6);
     const rename = this.ui.add(new TextButton(this, 0, 0, 'изменить', () => this.askName()));
     layoutRow([nameLabel, rename], left, y);
     y += 40;
-    const backpack = profile.backpack.map((t) => WEAPON_NAMES[t]).join(', ') || 'пусто';
     this.ui.text(
       left,
       y,
-      `С собой: в руках ${WEAPON_NAMES[profile.hands ?? 'none']} · рюкзак: ${backpack}` +
-        '\n(снаряжение — в лагере; уйдёт из профиля, когда хост начнёт забег)',
+      'С собой — то, что в руках и рюкзаке в лагере.\nУйдёт из профиля, когда хост начнёт забег.',
       UI_COLORS.muted,
     );
     y += 56;
@@ -118,13 +120,9 @@ export class LobbyScene extends Phaser.Scene {
     layoutRow([join, back], left, y);
   }
 
-  /** Снаряжение показываем серверу, но из профиля уберём только при старте забега. */
+  /** Токен — по нему сервер найдёт профиль: возьмёт снаряжение и вернёт добычу. */
   private joinOptions(): JoinOptions {
-    const profile = loadProfile();
-    return {
-      name: loadPlayerName() ?? 'Игрок',
-      loadout: { weapon: profile.hands, backpack: profile.backpack },
-    };
+    return { name: loadPlayerName() ?? 'Игрок', token: playerToken() };
   }
 
   private askName(): void {
@@ -161,7 +159,9 @@ export class LobbyScene extends Phaser.Scene {
       .catch((error: unknown) => {
         this.connecting = false;
         console.warn('Подключение не удалось', error);
-        if (this.scene.isActive()) this.ui.toast(connectionError(error));
+        if (!this.scene.isActive()) return;
+        if (this.solo) this.showSoloError(connectionError(error));
+        else this.ui.toast(connectionError(error));
       });
   }
 
@@ -206,9 +206,29 @@ export class LobbyScene extends Phaser.Scene {
     }
   }
 
+  /** Одиночный забег: как только комната готова — начинаем, лобби не показываем. */
+  private drawSolo(lobby: Lobby, left: number, y: number): void {
+    this.ui.text(left, y, 'Готовим подземелье…', UI_COLORS.muted);
+    if (lobby.info) lobby.start();
+  }
+
+  private showSoloError(message: string): void {
+    const { width, height } = this.scale;
+    const left = Math.max(24, width / 2 - 260);
+    const y = Math.max(24, height / 2 - 220) + 56;
+    this.ui.text(left, y + 28, message);
+    const back = this.ui.add(new TextButton(this, 0, 0, '← в меню (Esc)', () => this.goBack()));
+    layoutRow([back], left, y + 64);
+  }
+
   private onLobbyChange(lobby: Lobby): void {
     if (lobby.lost) {
       this.lobby = null;
+      if (this.solo) {
+        // Не переподключаемся сами — иначе при упавшем сервере крутились бы по кругу.
+        this.showSoloError('Связь с сервером потеряна');
+        return;
+      }
       this.redraw();
       this.ui.toast('Связь с комнатой потеряна');
       return;
@@ -219,8 +239,6 @@ export class LobbyScene extends Phaser.Scene {
       this.redraw();
       return;
     }
-    // Забег начался: снаряжение уходит из профиля (то же, что мы показали серверу).
-    saveProfile(startRun(loadProfile()).profile);
     const names = Object.fromEntries(info.players.map((p) => [p.playerId, p.name]));
     const data: GameSceneData = {
       title: started.title,
@@ -232,7 +250,10 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   private redraw(): void {
-    const data: LobbySceneData = this.lobby ? { lobby: this.lobby } : {};
+    const data: LobbySceneData = {
+      ...(this.lobby ? { lobby: this.lobby } : {}),
+      ...(this.solo ? { solo: this.solo } : {}),
+    };
     this.scene.restart(data);
   }
 
