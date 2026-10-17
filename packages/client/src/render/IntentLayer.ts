@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { step, type Action, type Position } from '@dt/shared';
-import { DEPTH, INTENT_COLORS, TILE_SIZE } from '../config';
+import { DEPTH, INTENT_COLORS, TILE_SIZE, ZOOM } from '../config';
 import type { UiOverlay } from '../ui/UiOverlay';
 import { tileCenter } from './mapView';
 
@@ -13,6 +13,8 @@ export interface Intent {
   readonly confirmed: boolean;
   /** Оставшийся путь до цели мыши после этого шага — пунктиром. */
   readonly path?: readonly Position[];
+  /** Номер фазы хода (1, 2) — подписывается у намерения. */
+  readonly phase?: number;
 }
 
 export interface IntentScene {
@@ -32,13 +34,20 @@ const HALF = TILE_SIZE / 2;
 /** Намерения на карте: стрелки шагов, путь, перекрестия ударов, подсветка. Перерисовывается целиком. */
 export class IntentLayer {
   private readonly g: Phaser.GameObjects.Graphics;
+  /** Подписи фаз — пересоздаются при каждой перерисовке (их единицы). */
+  private labels: Phaser.GameObjects.Text[] = [];
 
-  constructor(scene: Phaser.Scene, ui: UiOverlay) {
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly ui: UiOverlay,
+  ) {
     this.g = ui.world(scene.add.graphics().setDepth(DEPTH.intents));
   }
 
   draw({ intents, hover, hoverAttackable, reach, cursor }: IntentScene): void {
     const g = this.g.clear();
+    for (const label of this.labels) label.destroy();
+    this.labels = [];
 
     g.fillStyle(INTENT_COLORS.reach, ALPHA.reach);
     for (const { x, y } of reach) g.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
@@ -77,10 +86,11 @@ export class IntentLayer {
     }
   }
 
-  private drawIntent({ from, action, color, confirmed, path }: Intent): void {
+  private drawIntent({ from, action, color, confirmed, path, phase }: Intent): void {
     const g = this.g;
     const alpha = confirmed ? ALPHA.confirmed : ALPHA.draft;
     const [fx, fy] = tileCenter(from);
+    if (phase !== undefined) this.label(String(phase), action, from, color, alpha);
 
     switch (action.type) {
       case 'move': {
@@ -108,6 +118,37 @@ export class IntentLayer {
         g.strokeCircle(fx, fy, HALF - 2);
         return;
     }
+  }
+
+  /** Номер фазы: у шага — у середины стрелки, у удара — в углу цели, у ожидания — у героя. */
+  private label(text: string, action: Action, from: Position, color: number, alpha: number): void {
+    const at =
+      action.type === 'attack'
+        ? action.target
+        : action.type === 'move'
+          ? step(from, action.direction)
+          : from;
+    const [cx, cy] = tileCenter(at);
+    const [fx, fy] = tileCenter(from);
+    const x = action.type === 'move' ? (cx + fx) / 2 : cx - HALF + 3;
+    const y = action.type === 'move' ? (cy + fy) / 2 - 5 : cy - HALF + 3;
+    const css = `#${color.toString(16).padStart(6, '0')}`;
+    this.labels.push(
+      this.ui.world(
+        this.scene.add
+          .text(x, y, text, {
+            fontFamily: 'monospace',
+            fontSize: '7px',
+            color: action.type === 'attack' ? '#ff8a7a' : css,
+            stroke: '#1a0d13',
+            strokeThickness: 2,
+          })
+          .setOrigin(0.5)
+          .setResolution(ZOOM)
+          .setAlpha(alpha)
+          .setDepth(DEPTH.intents),
+      ),
+    );
   }
 
   /** Стрелка от центра клетки к центру соседней: линия и наконечник. */

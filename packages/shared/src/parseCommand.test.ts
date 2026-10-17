@@ -59,35 +59,53 @@ describe('parseAction', () => {
 });
 
 describe('parseCommand', () => {
-  const valid = { type: 'submitAction', playerId: 'p1', action: { type: 'wait' } };
+  const valid = { type: 'submitPlan', playerId: 'p1', plan: [{ type: 'wait' }] };
 
   it('accepts a well-formed command', () => {
     expect(parseCommand(valid)).toStrictEqual(valid);
+  });
+
+  it('accepts cancelPlan with just a player id', () => {
+    expect(parseCommand({ type: 'cancelPlan', playerId: 'p1', plan: [] })).toStrictEqual({
+      type: 'cancelPlan',
+      playerId: 'p1',
+    });
+    expect(parseCommand({ type: 'cancelPlan' })).toBeNull();
   });
 
   it.each([
     ['null', null],
     ['an array', [valid]],
     ['unknown command type', { ...valid, type: 'cheat' }],
-    ['missing playerId', { type: 'submitAction', action: { type: 'wait' } }],
+    ['missing playerId', { type: 'submitPlan', plan: [{ type: 'wait' }] }],
     ['non-string playerId', { ...valid, playerId: 1 }],
     ['empty playerId', { ...valid, playerId: '' }],
     ['too long playerId', { ...valid, playerId: 'x'.repeat(MAX_PLAYER_ID_LENGTH + 1) }],
-    ['missing action', { type: 'submitAction', playerId: 'p1' }],
-    ['bad action', { ...valid, action: { type: 'move', direction: 'sideways' } }],
+    ['missing plan', { type: 'submitPlan', playerId: 'p1' }],
+    ['empty plan', { ...valid, plan: [] }],
+    [
+      'plan longer than action points',
+      { ...valid, plan: [{ type: 'wait' }, { type: 'wait' }, { type: 'wait' }] },
+    ],
+    ['plan not an array', { ...valid, plan: { type: 'wait' } }],
+    [
+      'bad action in plan',
+      { ...valid, plan: [{ type: 'wait' }, { type: 'move', direction: 'sideways' }] },
+    ],
   ])('rejects %s', (_name, raw) => {
     expect(parseCommand(raw)).toBeNull();
   });
 
   it('builds a fresh object: extra fields and __proto__ from JSON do not get through', () => {
     const raw = fromJson(
-      '{"type":"submitAction","playerId":"p1","action":{"type":"wait","__proto__":{"x":1}},' +
+      '{"type":"submitPlan","playerId":"p1","plan":[{"type":"wait","__proto__":{"x":1}}],' +
         '"__proto__":{"polluted":true},"turn":999}',
     );
     const parsed = parseCommand(raw);
     expect(parsed).toStrictEqual(valid);
     expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
-    expect(Object.getPrototypeOf(parsed?.action)).toBe(Object.prototype);
+    if (parsed?.type !== 'submitPlan') throw new Error('expected submitPlan');
+    expect(Object.getPrototypeOf(parsed.plan[0])).toBe(Object.prototype);
   });
 });
 
@@ -95,13 +113,13 @@ describe('parseCommand + applyCommand', () => {
   it('a junk direction never reaches the turn, so it cannot block the other players', () => {
     let state = createGameState(parseRoom('#####\n#@..#\n#...#\n#####'), ['p1', 'p2'], 1);
     const junk = parseCommand(
-      fromJson('{"type":"submitAction","playerId":"p1","action":{"type":"move","direction":"x"}}'),
+      fromJson('{"type":"submitPlan","playerId":"p1","plan":[{"type":"move","direction":"x"}]}'),
     );
     expect(junk).toBeNull();
 
     for (const json of [
-      '{"type":"submitAction","playerId":"p1","action":{"type":"wait"}}',
-      '{"type":"submitAction","playerId":"p2","action":{"type":"wait"}}',
+      '{"type":"submitPlan","playerId":"p1","plan":[{"type":"wait"}]}',
+      '{"type":"submitPlan","playerId":"p2","plan":[{"type":"wait"}]}',
     ]) {
       const command = parseCommand(fromJson(json));
       if (!command) throw new Error(`should parse: ${json}`);

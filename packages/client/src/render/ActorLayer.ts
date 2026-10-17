@@ -21,6 +21,7 @@ const MARK_OFFSET = { x: 5, y: -10 } as const;
 /** На сколько пикселей актор «дёргается» в сторону препятствия при неудачном шаге. */
 const BUMP_OFFSET = 4;
 const HP_BAR = { width: 12, height: 2, offsetY: 9 } as const;
+const DEATH_FADE_MS = 250;
 const HP_COLORS = { player: 0x8fdc6a, monster: 0xe0503a, back: 0x1a0d13 } as const;
 
 interface ActorView {
@@ -42,7 +43,6 @@ interface ActorView {
 export class ActorLayer {
   private readonly views = new Map<ActorId, ActorView>();
   private running = 0;
-  private latest: GameState | null = null;
   /** Клетки, которые сейчас видит команда (posKey). Монстров вне их не показываем. */
   private visible: ReadonlySet<string> = new Set();
 
@@ -63,14 +63,25 @@ export class ActorLayer {
     return this.views.get(id)?.sprite;
   }
 
-  sync(state: GameState, visible: ReadonlySet<string> = this.visible): void {
-    this.latest = state;
+  /**
+   * Готовит спрайты к новому состоянию, не двигая их: создаёт спрайты новым акторам и
+   * показывает/прячет по туману войны. Двигают спрайты события (play), выравнивает — sync.
+   */
+  prepare(state: GameState, visible: ReadonlySet<string>): void {
     this.visible = visible;
     for (const actor of Object.values(state.actors)) {
       if (!this.views.has(actor.id)) this.add(actor);
       const view = this.views.get(actor.id);
       if (view) this.setShown(view, actor.kind === 'player' || visible.has(posKey(actor.pos)));
     }
+  }
+
+  /**
+   * Сверка с состоянием, когда анимации закончились: убрать спрайты пропавших акторов,
+   * поставить всех ровно в их клетки, обновить полоски HP. Посреди анимаций только prepare.
+   */
+  sync(state: GameState, visible: ReadonlySet<string>): void {
+    this.prepare(state, visible);
     if (this.busy) return;
 
     for (const [id, view] of this.views) {
@@ -133,10 +144,22 @@ export class ActorLayer {
       case 'attacked': {
         // Анимаций ударов пока нет — только разворот в сторону цели.
         const sprite = this.spriteOf(event.actorId);
-        const actor = this.latest?.actors[event.actorId];
-        if (sprite && actor) {
-          const dx = event.target.x - actor.pos.x;
+        if (sprite) {
+          const dx = tileCenter(event.target)[0] - sprite.x;
           if (dx !== 0) sprite.setFlipX(dx < 0);
+        }
+        return;
+      }
+      case 'died': {
+        // Погибший гаснет после того, как всплывёт урон; убирает спрайт сверка в конце хода.
+        const sprite = this.spriteOf(event.actorId);
+        if (sprite?.visible) {
+          this.animate({
+            targets: sprite,
+            alpha: 0,
+            delay: MOVE_DURATION_MS,
+            duration: DEATH_FADE_MS,
+          });
         }
         return;
       }
@@ -242,10 +265,7 @@ export class ActorLayer {
       onComplete: () => {
         onCompleteExtra?.();
         this.running--;
-        if (this.running === 0) {
-          if (this.latest) this.sync(this.latest);
-          this.onIdle();
-        }
+        if (this.running === 0) this.onIdle();
       },
     });
   }

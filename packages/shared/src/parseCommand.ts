@@ -1,6 +1,7 @@
 import type { Command } from './commands';
 import { isDirection } from './direction';
-import type { Action, Position } from './types';
+import { ACTION_POINTS } from './config/turn';
+import type { Action, Plan, Position } from './types';
 
 /** Длиннее id не бывает: защита от мусора, а не правило игры. */
 export const MAX_PLAYER_ID_LENGTH = 64;
@@ -46,17 +47,34 @@ function parsePosition(raw: unknown): Position | null {
 const isInteger = (value: unknown): value is number => Number.isSafeInteger(value);
 
 /**
+ * Разбирает план на ход: массив из 1..ACTION_POINTS действий. Укладывается ли он в ОД с учётом
+ * цены действий и достают ли удары, решают правила (rules/plan.ts), а не парсер.
+ */
+export function parsePlan(raw: unknown): Plan | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > ACTION_POINTS) return null;
+  const plan: Action[] = [];
+  for (const item of raw as readonly unknown[]) {
+    const action = parseAction(item);
+    if (!action) return null;
+    plan.push(action);
+  }
+  return plan;
+}
+
+/**
  * Разбирает команду из недоверенных данных. Проверяет только форму: существует ли игрок
  * и может ли он сейчас ходить, решает applyCommand. Кто прислал команду — забота сервера:
  * playerId он должен подставлять сам, а не верить клиенту.
  */
 export function parseCommand(raw: unknown): Command | null {
-  if (!isObject(raw) || field(raw, 'type') !== 'submitAction') return null;
-
+  if (!isObject(raw)) return null;
+  const type = field(raw, 'type');
   const playerId = field(raw, 'playerId');
   if (typeof playerId !== 'string' || playerId.length === 0) return null;
   if (playerId.length > MAX_PLAYER_ID_LENGTH) return null;
 
-  const action = parseAction(field(raw, 'action'));
-  return action ? { type: 'submitAction', playerId, action } : null;
+  if (type === 'cancelPlan') return { type, playerId };
+  if (type !== 'submitPlan') return null;
+  const plan = parsePlan(field(raw, 'plan'));
+  return plan ? { type, playerId, plan } : null;
 }

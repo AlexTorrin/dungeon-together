@@ -95,7 +95,7 @@ describe('chooseMonsterAction', () => {
     const state = makeState(ARENA, [playerAt('p1', 5, 2), monsterAt('m', 'skeleton', 4, 2)]);
     const peeked = {
       ...state,
-      pendingActions: { p1: { type: 'move' as const, direction: 'right' as const } },
+      pendingPlans: { p1: [{ type: 'move' as const, direction: 'right' as const }] },
     };
     for (let seed = 0; seed < 20; seed++) {
       expect(chooseMonsterAction(peeked, monsterOf(peeked, 'm'), seedRng(seed))).toEqual(

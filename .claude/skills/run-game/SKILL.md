@@ -44,7 +44,7 @@ node /tmp/dt-run/pw/shot.mjs <scratchpad>/shot.png ArrowRight ArrowRight   # с 
 `/tmp/dt-run` — читать файлы вне рабочих директорий агенту может быть запрещено.
 
 Шаги после пути — клавиши и действия: `hold:KeyD:600`, `down:KeyW`/`up:KeyW` (сочетания клавиш),
-`move:x,y` (навести мышь), `click:x,y`, `rclick:x,y`,
+`move:x,y` (навести мышь), `click:x,y`, `rclick:x,y`, `dblclick:x,y`,
 `drag:x1,y1:x2,y2`, `clicktext:Текст` (клик по Phaser-надписи/кнопке), `wait:ms`,
 `shot:<путь>` (промежуточный кадр), `dialog:<ответ>` (для `window.prompt`). Полный список — в
 шапке `scripts/shot.mjs`. Пример — пройти меню, побегать и открыть редактор:

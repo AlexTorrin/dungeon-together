@@ -19,7 +19,7 @@ function turn(state: GameState, actions: Record<PlayerId, Action>) {
   let next = state;
   const events: GameEvent[] = [];
   for (const [playerId, action] of Object.entries(actions)) {
-    const result = applyCommand(next, { type: 'submitAction', playerId, action });
+    const result = applyCommand(next, { type: 'submitPlan', playerId, plan: [action] });
     next = result.state;
     events.push(...result.events);
   }
@@ -98,7 +98,10 @@ describe('attacks hit tiles after movement', () => {
 
   it('ignores attacks out of reach', () => {
     const state = makeState(ARENA, [playerAt('p1', 1, 1)]);
-    expect(turn(state, { p1: hit(3, 1) })).toEqual({ state, events: [] });
+    expect(turn(state, { p1: hit(3, 1) })).toEqual({
+      state,
+      events: [{ type: 'planRejected', playerId: 'p1', reason: 'invalidPlan' }],
+    });
   });
 });
 
@@ -180,7 +183,10 @@ describe('game over', () => {
     const { state: next, events } = turn(state, { p1: hit(2, 1) });
     expect(next.status).toBe('won');
     expect(events.at(-1)).toEqual({ type: 'gameOver', status: 'won' });
-    expect(turn(next, { p1: wait })).toEqual({ state: next, events: [] });
+    expect(turn(next, { p1: wait })).toEqual({
+      state: next,
+      events: [{ type: 'planRejected', playerId: 'p1', reason: 'gameOver' }],
+    });
   });
 
   it('a room without monsters is not won by itself', () => {

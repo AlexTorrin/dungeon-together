@@ -33,7 +33,7 @@ function stateWith(positions: Record<PlayerId, Position>): GameState {
 }
 
 function submit(state: GameState, playerId: PlayerId, action: Action) {
-  return applyCommand(state, { type: 'submitAction', playerId, action });
+  return applyCommand(state, { type: 'submitPlan', playerId, plan: [action] });
 }
 
 const move = (direction: 'up' | 'down' | 'left' | 'right'): Action => ({ type: 'move', direction });
@@ -46,8 +46,15 @@ describe('turn order: single player', () => {
 
     expect(posOf(next, 'p1')).toEqual({ x: 2, y: 1 });
     expect(next.turn).toBe(2);
-    expect(next.pendingActions).toEqual({});
-    expect(events.map((e) => e.type)).toEqual(['actionSubmitted', 'moved', 'turnResolved']);
+    expect(next.pendingPlans).toEqual({});
+    expect(events.map((e) => e.type)).toEqual([
+      'planSubmitted',
+      'moved',
+      'phaseResolved',
+      'waited',
+      'phaseResolved',
+      'turnResolved',
+    ]);
   });
 
   it('bumps into walls and still finishes the turn', () => {
@@ -79,7 +86,7 @@ describe('turn order: several players', () => {
 
     expect(posOf(first.state, 'p1')).toEqual({ x: 1, y: 1 });
     expect(first.state.turn).toBe(1);
-    expect(first.events).toEqual([{ type: 'actionSubmitted', playerId: 'p1', turn: 1 }]);
+    expect(first.events).toEqual([{ type: 'planSubmitted', playerId: 'p1', turn: 1 }]);
 
     const second = submit(first.state, 'p2', move('right'));
     expect(posOf(second.state, 'p1')).toEqual({ x: 2, y: 1 });
@@ -91,7 +98,10 @@ describe('turn order: several players', () => {
     const state = stateWith({ p1: { x: 1, y: 1 }, p2: { x: 1, y: 2 } });
     const first = submit(state, 'p1', move('right'));
     const again = submit(first.state, 'p1', move('down'));
-    expect(again).toEqual({ state: first.state, events: [] });
+    expect(again).toEqual({
+      state: first.state,
+      events: [{ type: 'planRejected', playerId: 'p1', reason: 'alreadySubmitted' }],
+    });
   });
 
   it('ignores unknown players', () => {
@@ -230,7 +240,7 @@ describe('createGameState', () => {
   });
 });
 
-describe('submitAction guards', () => {
+describe('submitPlan guards', () => {
   it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])(
     'ignores prototype key %s as player id',
     (id) => {
@@ -241,7 +251,10 @@ describe('submitAction guards', () => {
 
   it('ignores actions after the game is over', () => {
     const state: GameState = { ...stateWith({ p1: { x: 1, y: 1 } }), status: 'lost' };
-    expect(submit(state, 'p1', move('right'))).toEqual({ state, events: [] });
+    expect(submit(state, 'p1', move('right'))).toEqual({
+      state,
+      events: [{ type: 'planRejected', playerId: 'p1', reason: 'gameOver' }],
+    });
   });
 
   it('does not mutate the input state', () => {

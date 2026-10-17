@@ -83,7 +83,7 @@ export function createGameState(
     actors,
     items,
     turn: 1,
-    pendingActions: {},
+    pendingPlans: {},
     status: 'playing',
     rng: seedRng(seed),
     nextId,

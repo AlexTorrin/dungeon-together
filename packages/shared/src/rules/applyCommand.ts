@@ -1,6 +1,6 @@
 import type { Command, GameEvent } from '../commands';
 import type { GameState } from '../types';
-import { submitAction } from './submitAction';
+import { cancelPlan, submitPlan } from './submitPlan';
 
 export interface CommandResult {
   readonly state: GameState;
@@ -10,7 +10,9 @@ export interface CommandResult {
 /** Единая точка входа логики: Command → новое состояние + события. Чистая функция. */
 export function applyCommand(state: GameState, command: Command): CommandResult {
   switch (command.type) {
-    case 'submitAction':
-      return submitAction(state, command);
+    case 'submitPlan':
+      return submitPlan(state, command);
+    case 'cancelPlan':
+      return cancelPlan(state, command);
   }
 }

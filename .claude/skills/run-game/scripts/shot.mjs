@@ -6,6 +6,7 @@
 //   down:KeyW  up:KeyW               — зажать / отпустить (для сочетаний: down:KeyW KeyA up:KeyW)
 //   move:x,y                         — навести мышь (без клика)
 //   click:x,y   rclick:x,y           — клик ЛКМ/ПКМ в экранных координатах (вьюпорт 960×640)
+//   dblclick:x,y                     — двойной клик ЛКМ
 //   drag:x1,y1:x2,y2                 — провести зажатой ЛКМ
 //   clicktext:Текст                  — клик по центру надписи на канвасе (ищется через Phaser)
 //   wait:ms                          — пауза
@@ -49,6 +50,9 @@ for (const raw of steps) {
   } else if (cmd === 'move') {
     const [x, y] = xy(arg);
     await page.mouse.move(x, y);
+  } else if (cmd === 'dblclick') {
+    const [x, y] = xy(arg);
+    await page.mouse.dblclick(x, y);
   } else if (cmd === 'click' || cmd === 'rclick') {
     const [x, y] = xy(arg);
     await page.mouse.click(x, y, { button: cmd === 'rclick' ? 'right' : 'left' });

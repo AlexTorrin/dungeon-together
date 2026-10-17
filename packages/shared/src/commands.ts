@@ -1,11 +1,16 @@
-import type { Action, ActorId, Direction, GameStatus, ItemId, PlayerId, Position } from './types';
+import type { ActorId, Direction, GameStatus, ItemId, Plan, PlayerId, Position } from './types';
 
 /** Намерения игроков. Клиент шлёт только их; результат решает applyCommand. */
-export type Command = {
-  readonly type: 'submitAction';
-  readonly playerId: PlayerId;
-  readonly action: Action;
-};
+export type Command =
+  | { readonly type: 'submitPlan'; readonly playerId: PlayerId; readonly plan: Plan }
+  /** Отозвать отправленный план, пока ход не разрешён (передумал). */
+  | { readonly type: 'cancelPlan'; readonly playerId: PlayerId };
+
+/** Почему план не принят — чтобы клиент не ждал вечно и мог объяснить игроку. */
+export type PlanRejectReason =
+  | 'gameOver' // игра уже закончилась
+  | 'alreadySubmitted' // план на этот ход уже есть (сначала cancelPlan)
+  | 'invalidPlan'; // дороже ОД или удар не достаёт с ожидаемой позиции
 
 /** Почему актор не смог сделать шаг. */
 export type BumpReason =
@@ -16,7 +21,13 @@ export type BumpReason =
 
 /** Что произошло в результате команды — клиент проигрывает это как анимации. */
 export type GameEvent =
-  | { readonly type: 'actionSubmitted'; readonly playerId: PlayerId; readonly turn: number }
+  | { readonly type: 'planSubmitted'; readonly playerId: PlayerId; readonly turn: number }
+  | {
+      readonly type: 'planRejected';
+      readonly playerId: PlayerId;
+      readonly reason: PlanRejectReason;
+    }
+  | { readonly type: 'planCancelled'; readonly playerId: PlayerId; readonly turn: number }
   | {
       readonly type: 'moved';
       readonly actorId: ActorId;
@@ -47,5 +58,7 @@ export type GameEvent =
   | { readonly type: 'itemPickedUp'; readonly actorId: ActorId; readonly itemId: ItemId }
   | { readonly type: 'itemDropped'; readonly itemId: ItemId; readonly at: Position }
   | { readonly type: 'gameOver'; readonly status: Exclude<GameStatus, 'playing'> }
+  /** Фаза хода разрешена (1, 2, …): клиент проигрывает фазы по очереди. */
+  | { readonly type: 'phaseResolved'; readonly phase: number }
   /** Ход разрешён; turn — номер только что завершённого хода. */
   | { readonly type: 'turnResolved'; readonly turn: number };

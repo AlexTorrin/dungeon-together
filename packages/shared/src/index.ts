@@ -11,6 +11,7 @@ export type {
   ItemId,
   MonsterActor,
   MonsterSpecies,
+  Plan,
   PlayerActor,
   PlayerId,
   Position,
@@ -20,7 +21,7 @@ export type {
   Tile,
   WeaponType,
 } from './types';
-export type { BumpReason, Command, GameEvent } from './commands';
+export type { BumpReason, Command, GameEvent, PlanRejectReason } from './commands';
 export type { CommandResult } from './rules/applyCommand';
 export {
   createFilledMap,
@@ -56,4 +57,6 @@ export { UNARMED, WEAPONS, type WeaponStats } from './config/weapons';
 export { createGameState } from './state/createGameState';
 export { chance, nextFloat, nextInt, seedRng, type RngState } from './rng';
 export { applyCommand } from './rules/applyCommand';
-export { MAX_PLAYER_ID_LENGTH, parseAction, parseCommand } from './parseCommand';
+export { MAX_PLAYER_ID_LENGTH, parseAction, parseCommand, parsePlan } from './parseCommand';
+export { ACTION_POINTS, actionCost } from './config/turn';
+export { expectedPositions, isPlanValid, planPhases } from './rules/plan';

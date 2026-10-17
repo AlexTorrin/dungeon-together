@@ -84,11 +84,17 @@ export type Action =
   | { readonly type: 'attack'; readonly target: Position }
   | { readonly type: 'wait' };
 
+/**
+ * План на ход: до ACTION_POINTS действий по порядку фаз (config/turn.ts). Короткий план
+ * дополняется ожиданием; действие дороже 1 ОД занимает несколько фаз (rules/plan.ts).
+ */
+export type Plan = readonly Action[];
+
 export type GameStatus = 'playing' | 'won' | 'lost';
 
 /**
- * Модель ходов — одновременная: каждый игрок выбирает действие (pendingActions),
- * когда выбрали все — ход разрешается разом и turn увеличивается.
+ * Модель ходов — одновременная: каждый игрок выбирает план на ход (pendingPlans),
+ * когда выбрали все — ход разрешается по фазам и turn увеличивается.
  * Мёртвые акторы удаляются из actors.
  */
 export interface GameState {
@@ -96,7 +102,7 @@ export interface GameState {
   readonly actors: Readonly<Record<ActorId, Actor>>;
   readonly items: Readonly<Record<ItemId, GroundItem>>;
   readonly turn: number;
-  readonly pendingActions: Readonly<Record<PlayerId, Action>>;
+  readonly pendingPlans: Readonly<Record<PlayerId, Plan>>;
   readonly status: GameStatus;
   /** Состояние генератора случайных чисел (см. rng.ts). Вся случайность — только через него. */
   readonly rng: number;

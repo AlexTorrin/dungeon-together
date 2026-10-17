@@ -1,11 +1,12 @@
 import { AGGRO_RADIUS, AI_AIM_AT_CURRENT_CHANCE, ITEM_SEARCH_RADIUS } from '../config/ai';
+import { ACTION_POINTS } from '../config/turn';
 import { VIEW_RADIUS } from '../config/vision';
 import { DIRECTIONS, directionTo, step } from '../direction';
 import { visibleFrom } from '../map/fov';
 import { posKey } from '../map/geometry';
 import { findPath, canStep } from '../map/pathfinding';
 import { chance, nextInt, type RngState } from '../rng';
-import type { Action, Actor, GameState, MonsterActor, Position } from '../types';
+import type { Action, Actor, GameState, MonsterActor, Plan, Position } from '../types';
 import { canAttack } from './combat';
 
 interface Goal<T> {
@@ -93,4 +94,29 @@ export function chooseMonsterAction(
   if (prey) return [stepAlong(monster.pos, prey.path), rng];
 
   return [{ type: 'wait' }, rng];
+}
+
+/**
+ * План монстра на ход — по одному действию на фазу. Второе выбирается так, будто первое
+ * удалось (шагнул — значит, уже на новой клетке); игроков бот считает стоящими на месте —
+ * их выбор ему неизвестен, как и игрокам выбор бота.
+ */
+export function chooseMonsterPlan(
+  state: GameState,
+  monster: MonsterActor,
+  rng: RngState,
+): readonly [Plan, RngState] {
+  const plan: Action[] = [];
+  let self = monster;
+  let next = rng;
+  for (let phase = 0; phase < ACTION_POINTS; phase++) {
+    const view: GameState = { ...state, actors: { ...state.actors, [self.id]: self } };
+    let action: Action;
+    [action, next] = chooseMonsterAction(view, self, next);
+    plan.push(action);
+    if (action.type === 'move' && canStep(state.map, self.pos, action.direction)) {
+      self = { ...self, pos: step(self.pos, action.direction) };
+    }
+  }
+  return [plan, next];
 }

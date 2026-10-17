@@ -57,9 +57,9 @@ describe('team vision and memory', () => {
 
     const go = (direction: Direction): void => {
       state = applyCommand(state, {
-        type: 'submitAction',
+        type: 'submitPlan',
         playerId: 'p1',
-        action: { type: 'move', direction },
+        plan: [{ type: 'move', direction }],
       }).state;
     };
     for (let i = 0; i < 6; i++) go('right'); // к проходу (7,1)
