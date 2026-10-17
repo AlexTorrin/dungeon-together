@@ -176,5 +176,10 @@ export function generateLevel(seed: number, difficulty: Difficulty = 'medium'): 
     keeper.key = true;
   }
 
+  // Баночка лечения — редкость (последней: с ней или без неё остальное на уровне то же).
+  const [hasPotion, afterPotion] = chance(rng, LEVEL.potionChance);
+  rng = afterPotion;
+  if (hasPotion) items.push({ kind: 'potion', pos: place() });
+
   return { map, spawn, monsters, items, door };
 }

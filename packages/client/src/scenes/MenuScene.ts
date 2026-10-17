@@ -7,7 +7,7 @@ import { connectionError, reconnectRoom } from '../net/connection';
 import { fetchProfile, profileErrorText } from '../net/profileApi';
 import { forgetRoom, rememberedRoom } from '../net/resume';
 import { deleteRoom, loadRooms } from '../storage/roomStorage';
-import { DIFFICULTY_NAMES, WEAPON_NAMES } from '../ui/names';
+import { DIFFICULTY_NAMES, ITEM_NAMES } from '../ui/names';
 import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
 import type { LobbySceneData } from './LobbyScene';
@@ -61,9 +61,9 @@ export class MenuScene extends Phaser.Scene {
     fetchProfile()
       .then((profile) => {
         if (!summary.active) return; // сцену уже покинули
-        const backpack = profile.backpack.map((t) => WEAPON_NAMES[t]).join(', ') || 'пусто';
+        const backpack = profile.backpack.map((t) => ITEM_NAMES[t]).join(', ') || 'пусто';
         summary.setText(
-          `Кошелёк: ${profile.coins} · в руках: ${WEAPON_NAMES[profile.hands ?? 'none']} · рюкзак: ${backpack}`,
+          `Кошелёк: ${profile.coins} · в руках: ${ITEM_NAMES[profile.hands ?? 'none']} · рюкзак: ${backpack}`,
         );
       })
       .catch((error: unknown) => {

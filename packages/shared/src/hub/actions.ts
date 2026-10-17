@@ -1,11 +1,11 @@
 import { BACKPACK_SIZE } from '../config/inventory';
 import { WEAPONS } from '../config/weapons';
-import type { WeaponType } from '../types';
+import type { ItemType, WeaponType } from '../types';
 import { buy, move, sell, type Profile, type Slot } from './profile';
 
 /** Действие в лагере. Клиент шлёт его серверу, сервер применяет к профилю (applyHubAction). */
 export type HubAction =
-  | { readonly type: 'buy'; readonly weapon: WeaponType }
+  | { readonly type: 'buy'; readonly item: ItemType }
   | { readonly type: 'sell'; readonly slot: Slot }
   | { readonly type: 'move'; readonly from: Slot; readonly to: Slot['place'] };
 
@@ -13,7 +13,7 @@ export type HubAction =
 export function applyHubAction(profile: Profile, action: HubAction): Profile | null {
   switch (action.type) {
     case 'buy':
-      return buy(profile, action.weapon);
+      return buy(profile, action.item);
     case 'sell':
       return sell(profile, action.slot);
     case 'move':
@@ -34,6 +34,9 @@ const field = (obj: Fields, name: string): unknown =>
 export const isWeaponType = (value: unknown): value is WeaponType =>
   typeof value === 'string' && Object.hasOwn(WEAPONS, value);
 
+export const isItemType = (value: unknown): value is ItemType =>
+  value === 'potion' || isWeaponType(value);
+
 const isIndex = (value: unknown): value is number =>
   Number.isSafeInteger(value) && (value as number) >= 0;
 
@@ -53,8 +56,8 @@ export function parseHubAction(raw: unknown): HubAction | null {
   if (!isObject(raw)) return null;
   const type = field(raw, 'type');
   if (type === 'buy') {
-    const weapon = field(raw, 'weapon');
-    return isWeaponType(weapon) ? { type, weapon } : null;
+    const item = field(raw, 'item');
+    return isItemType(item) ? { type, item } : null;
   }
   if (type === 'sell') {
     const slot = parseSlot(field(raw, 'slot'));
@@ -79,8 +82,8 @@ export function parseProfile(raw: unknown): Profile | null {
   if (hands !== null && !isWeaponType(hands)) return null;
   if (!Array.isArray(backpack) || backpack.length > BACKPACK_SIZE) return null;
   if (!Array.isArray(chest)) return null;
-  const items = (list: readonly unknown[]): WeaponType[] | null =>
-    list.every(isWeaponType) ? [...list] : null;
+  const items = (list: readonly unknown[]): ItemType[] | null =>
+    list.every(isItemType) ? [...list] : null;
   const backpackItems = items(backpack);
   const chestItems = items(chest);
   if (!backpackItems || !chestItems) return null;

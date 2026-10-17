@@ -59,7 +59,7 @@ export const ANIMATIONS = {
     frames: frames('Character_animation/monsters_idle/vampire/v1', 'vampire_v1', 4),
     frameRate: 6,
   },
-  /** Монета и ключ на полу — анимации из пака. */
+  /** Монета, ключ и баночка лечения (красная) на полу — анимации из пака. */
   coin: {
     key: 'coin',
     frames: frames('items and trap_animation/coin', 'coin', 4),
@@ -68,6 +68,11 @@ export const ANIMATIONS = {
   key: {
     key: 'key',
     frames: frames('items and trap_animation/keys', 'keys_1', 4),
+    frameRate: 6,
+  },
+  potion: {
+    key: 'potion',
+    frames: frames('items and trap_animation/flasks', 'flasks_1', 4),
     frameRate: 6,
   },
   torch: {
@@ -123,11 +128,13 @@ export const ITEM_LOOKS: Readonly<Record<WeaponType, StaticLook>> = {
   wand: { texture: ASSET_PATHS.wandItem },
 };
 
-/** Как выглядит вещь на полу: оружие — свой спрайт, монеты и ключ — анимация из пака. */
+/** Как выглядит вещь на полу: оружие — свой спрайт, баночка, монеты и ключ — анимация из пака. */
 export function lootLook(loot: Loot): StaticLook & { readonly anim?: string } {
   switch (loot.kind) {
     case 'weapon':
       return ITEM_LOOKS[loot.type];
+    case 'potion':
+      return { texture: firstFrame(ANIMATIONS.potion), anim: ANIMATIONS.potion.key };
     case 'coins':
       return { texture: firstFrame(ANIMATIONS.coin), anim: ANIMATIONS.coin.key };
     case 'key':

@@ -1,6 +1,6 @@
 import { BACKPACK_SIZE } from '../config/inventory';
 import { PRICES, SHOP_STOCK, sellPrice } from '../config/shop';
-import type { Carried, WeaponType } from '../types';
+import type { Carried, ItemType, WeaponType } from '../types';
 
 /**
  * Профиль героя между забегами (мета-прогрессия): кошелёк, руки, рюкзак и сундук.
@@ -9,15 +9,16 @@ import type { Carried, WeaponType } from '../types';
  */
 export interface Profile {
   readonly coins: number;
+  /** В руках — только оружие. */
   readonly hands: WeaponType | null;
-  readonly backpack: readonly WeaponType[];
-  readonly chest: readonly WeaponType[];
+  readonly backpack: readonly ItemType[];
+  readonly chest: readonly ItemType[];
 }
 
 /** С чем герой идёт в забег. */
 export interface Loadout {
   readonly weapon: WeaponType | null;
-  readonly backpack: readonly WeaponType[];
+  readonly backpack: readonly ItemType[];
 }
 
 /** Первый забег — с пустыми руками и без монет. */
@@ -30,7 +31,7 @@ export type Slot =
   | { readonly place: 'chest'; readonly index: number };
 
 /** Что лежит в слоте; null — пусто. */
-export function itemAt(profile: Profile, slot: Slot): WeaponType | null {
+export function itemAt(profile: Profile, slot: Slot): ItemType | null {
   switch (slot.place) {
     case 'hands':
       return profile.hands;
@@ -57,7 +58,7 @@ function without(profile: Profile, slot: Slot): Profile {
  * Купить в магазине: только то, что в продаже, и если хватает монет. Покупка ложится в рюкзак,
  * а если в нём нет места — в сундук. null — нельзя.
  */
-export function buy(profile: Profile, type: WeaponType): Profile | null {
+export function buy(profile: Profile, type: ItemType): Profile | null {
   if (!SHOP_STOCK.includes(type) || profile.coins < PRICES[type]) return null;
   const paid = { ...profile, coins: profile.coins - PRICES[type] };
   return paid.backpack.length < BACKPACK_SIZE
@@ -74,13 +75,14 @@ export function sell(profile: Profile, slot: Slot): Profile | null {
 }
 
 /**
- * Переложить предмет: в руки (что было в руках, встаёт на его место), в рюкзак (если есть
- * место) или в сундук. null — нельзя (пусто, рюкзак полон, перекладывать некуда).
+ * Переложить предмет: в руки (только оружие; что было в руках, встаёт на его место), в рюкзак
+ * (если есть место) или в сундук. null — нельзя (пусто, рюкзак полон, баночку в руки и т.п.).
  */
 export function move(profile: Profile, from: Slot, to: Slot['place']): Profile | null {
   const type = itemAt(profile, from);
   if (!type || from.place === to) return null;
   if (to === 'hands') {
+    if (type === 'potion') return null;
     const rest = without(profile, from);
     const old = profile.hands;
     if (!old || from.place === 'hands') return { ...rest, hands: type };
@@ -114,7 +116,7 @@ export function startRun(profile: Profile): {
 
 /**
  * Закончить забег: вынесенное (Carried из state.escaped) возвращается — монеты в кошелёк,
- * оружие в руки (если пусты), иначе в рюкзак, а что не влезло — в сундук. Добавляем, а не
+ * оружие в руки (если пусты; баночка — никогда), иначе в рюкзак, а что не влезло — в сундук. Добавляем, а не
  * заменяем: профиль мог измениться, пока шёл забег (тот же игрок в другой комнате).
  * Не вынес (погиб, бросил) — ничего не добавляется.
  */
@@ -128,7 +130,7 @@ export function finishRun(profile: Profile, carried: Carried | undefined): Profi
     ...carried.backpack.map((i) => i.type),
   ];
   for (const type of returned) {
-    if (!hands) hands = type;
+    if (!hands && type !== 'potion') hands = type;
     else if (backpack.length < BACKPACK_SIZE) backpack.push(type);
     else chest.push(type);
   }

@@ -12,6 +12,8 @@ export const LEVEL = {
   dugPercentage: 0.3,
   /** Оружия на полу. */
   items: 3,
+  /** Шанс, что на уровне лежит баночка лечения (одна) — очень редко. */
+  potionChance: 0.1,
 } as const;
 
 export type Difficulty = 'easy' | 'medium' | 'hard';

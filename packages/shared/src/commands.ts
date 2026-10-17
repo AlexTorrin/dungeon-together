@@ -61,6 +61,14 @@ export type GameEvent =
   | { readonly type: 'died'; readonly actorId: ActorId; readonly at: Position }
   /** Актор поднял вещь с пола: оружие — в рюкзак, монеты и ключ — в счётчики. */
   | { readonly type: 'itemPickedUp'; readonly actorId: ActorId; readonly itemId: ItemId }
+  /** Актор выпил баночку: healed — сколько HP вернулось, hp — сколько стало. */
+  | {
+      readonly type: 'drank';
+      readonly actorId: ActorId;
+      readonly itemId: ItemId;
+      readonly healed: number;
+      readonly hp: number;
+    }
   /** Актор взял предмет из рюкзака в руки. */
   | { readonly type: 'itemEquipped'; readonly actorId: ActorId; readonly itemId: ItemId }
   /** Предмет упал на пол: выбросил (drop) или выронил при смерти. */

@@ -20,6 +20,7 @@ const SPAWN_CHAR = '@';
 const DOOR_CHAR = '+';
 const COINS_CHAR = '$'; // кучка из одной монеты
 const KEY_CHAR = '!';
+const POTION_CHAR = 'p';
 
 /** Что стоит в клетке комнаты помимо тайла. В клетке — не больше одной такой вещи. */
 export type RoomEntity =
@@ -51,6 +52,7 @@ const ENTITY_CHARS: ReadonlyMap<string, RoomEntity> = new Map<string, RoomEntity
   ]),
   [COINS_CHAR, { kind: 'item', item: { kind: 'coins', amount: 1 } }],
   [KEY_CHAR, { kind: 'item', item: { kind: 'key' } }],
+  [POTION_CHAR, { kind: 'item', item: { kind: 'potion' } }],
 ]);
 
 /** Вещь без координат (RoomItem и GroundItem несут ещё pos/id). */
@@ -58,6 +60,8 @@ export function lootOf(item: Loot): Loot {
   switch (item.kind) {
     case 'weapon':
       return { kind: 'weapon', type: item.type };
+    case 'potion':
+      return { kind: 'potion' };
     case 'coins':
       return { kind: 'coins', amount: item.amount };
     case 'key':
@@ -69,6 +73,8 @@ function lootChar(item: Loot): string {
   switch (item.kind) {
     case 'weapon':
       return ITEM_CHARS[item.type];
+    case 'potion':
+      return POTION_CHAR;
     case 'coins':
       return COINS_CHAR;
     case 'key':
@@ -88,7 +94,7 @@ const bareMonster = (species: MonsterSpecies, pos: Position): RoomMonster => ({
 /**
  * ASCII-комната: как parseAsciiMap, плюс ровно один '@' — точка старта, и расстановка:
  * S — скелет, K — череп, V — вампир; оружие: m — нож, r — лук, s — меч, w — палочка;
- * $ — монета, ! — ключ (под ними пол); + — дверь-выход в стене (не больше одной).
+ * $ — монета, ! — ключ, p — баночка лечения (под ними пол); + — дверь-выход в стене (не больше одной).
  */
 export function parseRoom(ascii: string): Room {
   const rows = ascii.split('\n').filter((row) => row.trim().length > 0);

@@ -8,6 +8,9 @@ export type {
   GameStatus,
   GroundItem,
   Item,
+  ItemType,
+  PotionItem,
+  WeaponItem,
   ItemId,
   MonsterActor,
   MonsterSpecies,
@@ -107,6 +110,7 @@ export {
 } from './net/protocol';
 export {
   applyHubAction,
+  isItemType,
   isWeaponType,
   parseHubAction,
   parseProfile,
@@ -114,3 +118,6 @@ export {
   parseToken,
   type HubAction,
 } from './hub/actions';
+export { POTION, potionHeal } from './config/potion';
+export { inHands, isWeapon, onGround } from './items';
+export { PLAYER_MAX_HP } from './config/actors';

@@ -14,7 +14,7 @@ import type {
   PlayerId,
   Position,
   Room,
-  WeaponType,
+  ItemType,
 } from '../types';
 import { BACKPACK_SIZE } from '../config/inventory';
 import type { Loadout } from '../hub/profile';
@@ -92,18 +92,20 @@ export function createGameState(
     if (!pos) throw new Error(`No position for player ${id}`);
     if (Object.hasOwn(actors, id)) throw new Error(`Duplicate actor id ${id}`);
     const loadout = Object.hasOwn(loadouts, id) ? loadouts[id] : undefined;
-    const newItem = (type: WeaponType): Item => {
+    const newId = (): ItemId => {
       let itemId: ItemId;
       [itemId, nextId] = allocateId(nextId, 'item');
-      return { id: itemId, type };
+      return itemId;
     };
+    const newItem = (type: ItemType): Item =>
+      type === 'potion' ? { id: newId(), type } : { id: newId(), type };
     actors[id] = {
       kind: 'player',
       id,
       pos,
       hp: PLAYER_MAX_HP,
       maxHp: PLAYER_MAX_HP,
-      weapon: loadout?.weapon ? newItem(loadout.weapon) : null,
+      weapon: loadout?.weapon ? { id: newId(), type: loadout.weapon } : null,
       backpack: (loadout?.backpack ?? []).slice(0, BACKPACK_SIZE).map(newItem),
       coins: 0,
       keys: 0,

@@ -41,11 +41,11 @@ describe('маршруты лагеря', () => {
   });
 
   it('покупка меняет профиль на сервере; нельзя — 409, мусор — 400', async () => {
-    const res = await act({ type: 'buy', weapon: 'bow' });
+    const res = await act({ type: 'buy', item: 'bow' });
     expect(await res.json()).toMatchObject({ coins: 3, backpack: ['bow'] });
     expect(store.get(TOKEN)).toMatchObject({ coins: 3, backpack: ['bow'] });
-    expect((await act({ type: 'buy', weapon: 'sword' })).status).toBe(409);
-    expect((await act({ type: 'buy', weapon: 'laser' })).status).toBe(400);
-    expect((await act({ type: 'buy', weapon: 'bow' }, null)).status).toBe(401);
+    expect((await act({ type: 'buy', item: 'sword' })).status).toBe(409);
+    expect((await act({ type: 'buy', item: 'laser' })).status).toBe(400);
+    expect((await act({ type: 'buy', item: 'bow' }, null)).status).toBe(401);
   });
 });

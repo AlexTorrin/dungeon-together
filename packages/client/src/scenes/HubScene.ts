@@ -10,11 +10,14 @@ import {
   type HubAction,
   type Profile,
   type Slot,
-  type WeaponType,
+  type ItemType,
+  PLAYER_MAX_HP,
+  POTION,
+  potionHeal,
 } from '@dt/shared';
 import { UI_COLORS } from '../config';
 import { fetchProfile, profileErrorText, sendHubAction } from '../net/profileApi';
-import { WEAPON_NAMES } from '../ui/names';
+import { ITEM_NAMES } from '../ui/names';
 import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
 import { SCENES } from './sceneKeys';
@@ -22,7 +25,10 @@ import { SCENES } from './sceneKeys';
 const COLUMN_WIDTH = 380;
 const ROW_HEIGHT = 36;
 
-function stats(type: WeaponType): string {
+function stats(type: ItemType): string {
+  if (type === 'potion') {
+    return `лечит половину HP (+${potionHeal(PLAYER_MAX_HP)}), выпить — ${POTION.cost} ОД`;
+  }
   const { damage, range, cost } = WEAPONS[type];
   return `урон ${damage}, дальн. ${range}, ${cost} ОД`;
 }
@@ -106,10 +112,10 @@ export class HubScene extends Phaser.Scene {
     this.ui.text(x, y, 'Магазин', UI_COLORS.muted);
     y += 28;
     for (const type of SHOP_STOCK) {
-      const label = this.ui.text(0, 0, `${WEAPON_NAMES[type]} — ${PRICES[type]} мон.`);
+      const label = this.ui.text(0, 0, `${ITEM_NAMES[type]} — ${PRICES[type]} мон.`);
       label.setPadding(0, 6, 0, 6);
       const row: Phaser.GameObjects.Text[] = [label];
-      this.addButton(row, profile, 'купить', { type: 'buy', weapon: type });
+      this.addButton(row, profile, 'купить', { type: 'buy', item: type });
       layoutRow(row, x, y);
       this.ui.text(x, y + 28, stats(type), UI_COLORS.muted);
       y += ROW_HEIGHT + 20;
@@ -166,7 +172,7 @@ export class HubScene extends Phaser.Scene {
     count = 1,
   ): number {
     const type = itemAt(profile, slot);
-    const name = type ? WEAPON_NAMES[type] : WEAPON_NAMES.none;
+    const name = type ? ITEM_NAMES[type] : ITEM_NAMES.none;
     const label = this.ui.text(0, 0, `${name}${count > 1 ? ` ×${count}` : ''}`.padEnd(11));
     label.setPadding(0, 6, 0, 6);
     const row: Phaser.GameObjects.Text[] = [label];

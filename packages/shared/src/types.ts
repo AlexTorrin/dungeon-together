@@ -19,10 +19,13 @@ export type Direction =
 export type MonsterSpecies = 'skeleton' | 'skull' | 'vampire';
 /** Оружие (характеристики — config/weapons.ts): нож и меч бьют соседнюю клетку, лук и палочка — издалека. */
 export type WeaponType = 'knife' | 'bow' | 'sword' | 'wand';
+/** Предмет, который занимает место в рюкзаке: оружие или баночка лечения (config/potion.ts). */
+export type ItemType = WeaponType | 'potion';
 
-/** Что может лежать на полу: оружие, кучка монет или ключ от двери-выхода. */
+/** Что может лежать на полу: оружие, баночка, кучка монет или ключ от двери-выхода. */
 export type Loot =
   | { readonly kind: 'weapon'; readonly type: WeaponType }
+  | { readonly kind: 'potion' }
   | { readonly kind: 'coins'; readonly amount: number }
   | { readonly kind: 'key' };
 
@@ -54,12 +57,24 @@ export type PlayerId = ActorId;
 export type ItemId = string;
 
 /** Оружие у актора — в руках или в рюкзаке. */
-export interface Item {
+export interface WeaponItem {
   readonly id: ItemId;
   readonly type: WeaponType;
 }
 
-/** Предмет, лежащий на полу. Подобранное оружие становится Item, монеты и ключ — счётчиками актора. */
+/** Баночка лечения — только в рюкзаке; выпить — действие drink. */
+export interface PotionItem {
+  readonly id: ItemId;
+  readonly type: 'potion';
+}
+
+/** Предмет у актора. В руках бывает только оружие (WeaponItem), в рюкзаке — что угодно. */
+export type Item = WeaponItem | PotionItem;
+
+/**
+ * Предмет, лежащий на полу. Подобранные оружие и баночка становятся Item в рюкзаке, монеты
+ * и ключ — счётчиками актора.
+ */
 export type GroundItem = Loot & { readonly id: ItemId; readonly pos: Position };
 
 interface ActorBase {
@@ -68,7 +83,7 @@ interface ActorBase {
   readonly hp: number;
   readonly maxHp: number;
   /** Одно оружие в руках или ничего (тогда бьёт кулаками). */
-  readonly weapon: Item | null;
+  readonly weapon: WeaponItem | null;
   /** Рюкзак: до BACKPACK_SIZE предметов (config/inventory.ts). Подобранное попадает сюда. */
   readonly backpack: readonly Item[];
   /** Монеты и ключи места в рюкзаке не занимают. */
@@ -105,7 +120,9 @@ export type Action =
   /** Выбросить ключ на свою клетку. */
   | { readonly type: 'dropKey' }
   /** Открыть дверь-выход ключом (стоя рядом); ключ тратится. */
-  | { readonly type: 'openDoor' };
+  | { readonly type: 'openDoor' }
+  /** Выпить баночку из рюкзака: лечит в последней фазе своей цены (config/potion.ts). */
+  | { readonly type: 'drink'; readonly itemId: ItemId };
 
 /**
  * План на ход: до ACTION_POINTS действий по порядку фаз (config/turn.ts). Короткий план
@@ -119,7 +136,7 @@ export type GameStatus = 'playing' | 'won' | 'lost';
 /** Что игрок вынес с уровня — понадобится хабу (магазин, сундук). */
 export interface Carried {
   readonly coins: number;
-  readonly weapon: Item | null;
+  readonly weapon: WeaponItem | null;
   readonly backpack: readonly Item[];
 }
 

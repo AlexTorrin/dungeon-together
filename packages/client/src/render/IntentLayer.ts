@@ -117,6 +117,12 @@ export class IntentLayer {
         g.lineStyle(1, color, alpha);
         g.strokeCircle(fx, fy, HALF - 2);
         return;
+      case 'drink':
+        // Выпить: крестик лечения у героя.
+        g.lineStyle(2, color, alpha);
+        g.lineBetween(fx, fy - 4, fx, fy + 4);
+        g.lineBetween(fx - 4, fy, fx + 4, fy);
+        return;
       case 'openDoor':
       case 'dropKey':
       case 'dropCoins':

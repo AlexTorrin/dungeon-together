@@ -1,4 +1,5 @@
 import type { Command, GameEvent } from '../commands';
+import { onGround } from '../items';
 import { allocateId } from '../state/ids';
 import type { GameState, GroundItem, ItemId, Loot } from '../types';
 import type { CommandResult } from './applyCommand';
@@ -21,7 +22,7 @@ export function leave(state: GameState, { playerId }: LeaveCommand): CommandResu
   const items: Record<ItemId, GroundItem> = { ...state.items };
   let nextId = state.nextId;
   for (const item of [...(player.weapon ? [player.weapon] : []), ...player.backpack]) {
-    items[item.id] = { kind: 'weapon', ...item, pos: at };
+    items[item.id] = onGround(item, at);
     events.push({ type: 'itemDropped', actorId: playerId, itemId: item.id, at });
   }
   const dropNew = (loot: Loot): void => {

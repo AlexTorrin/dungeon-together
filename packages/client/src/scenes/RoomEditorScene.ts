@@ -76,7 +76,7 @@ const TOOLS: readonly { tool: Tool; label: string; key: string }[] = [
   },
 ];
 
-/** Второй ряд — без горячих клавиш: дверь-выход, монета, ключ. */
+/** Второй ряд — без горячих клавиш: дверь-выход, монета, ключ, баночка. */
 const EXTRA_TOOLS: readonly { tool: Tool; label: string }[] = [
   { tool: { kind: 'door' }, label: 'Дверь' },
   {
@@ -84,6 +84,10 @@ const EXTRA_TOOLS: readonly { tool: Tool; label: string }[] = [
     label: 'Монета',
   },
   { tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'key' } } }, label: 'Ключ' },
+  {
+    tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'potion' } } },
+    label: 'Баночка',
+  },
 ];
 
 /** Высота панели инструментов сверху; клики по ней не рисуют на карте. */

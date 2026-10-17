@@ -12,7 +12,9 @@ import {
   WEAPONS,
   UNARMED,
   type GroundItem,
-  type Item,
+  type WeaponItem,
+  POTION,
+  potionHeal,
   type PlanSimulation,
   directionTo,
   findPath,
@@ -50,7 +52,7 @@ import { ItemLayer } from '../render/ItemLayer';
 import { MapView } from '../render/mapView';
 import { ActionPopup, type PopupOption } from '../ui/ActionPopup';
 import { UiOverlay } from '../ui/UiOverlay';
-import { WEAPON_NAMES } from '../ui/names';
+import { ITEM_NAMES } from '../ui/names';
 import { SCENES, type GameReturn, type GameSceneData } from './sceneKeys';
 
 /** Игрок за этим компьютером в одиночной игре. В сетевой id выдаёт сервер. */
@@ -118,7 +120,9 @@ const REJECT_TEXT: Readonly<Record<PlanRejectReason, string>> = {
 function lootName(item: GroundItem): string {
   switch (item.kind) {
     case 'weapon':
-      return WEAPON_NAMES[item.type];
+      return ITEM_NAMES[item.type];
+    case 'potion':
+      return ITEM_NAMES.potion;
     case 'coins':
       return item.amount === 1 ? 'монета' : `монеты ×${item.amount}`;
     case 'key':
@@ -127,9 +131,9 @@ function lootName(item: GroundItem): string {
 }
 
 /** Оружие в руках: название и характеристики для HUD. */
-function weaponLabel(item: Item | null): string {
+function weaponLabel(item: WeaponItem | null): string {
   const { damage, range, cost } = item ? WEAPONS[item.type] : UNARMED;
-  return `${WEAPON_NAMES[item?.type ?? 'none']} (урон ${damage}, дальн. ${range}, удар ${cost} ОД)`;
+  return `${ITEM_NAMES[item?.type ?? 'none']} (урон ${damage}, дальн. ${range}, удар ${cost} ОД)`;
 }
 
 /**
@@ -427,14 +431,15 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** 1–4: взять в руки предмет из слота рюкзака; Shift+1–4 — выбросить его. */
+  /** 1–4: взять в руки предмет из слота рюкзака (баночку — выпить); Shift+1–4 — выбросить. */
   private chooseItem(slot: number, type: 'equip' | 'drop'): void {
     const item = this.chooser()?.backpack[slot];
     if (!item) {
       this.ui.toast(`Слот ${slot + 1} пуст`);
       return;
     }
-    this.choose({ type, itemId: item.id }, null);
+    const use = type === 'equip' && item.type === 'potion' ? 'drink' : type;
+    this.choose({ type: use, itemId: item.id }, null);
   }
 
   // ---------- Прицел с клавиатуры ----------
@@ -533,15 +538,24 @@ export class GameScene extends Phaser.Scene {
         offer(`Выбросить монеты (${me.coins})`, [{ type: 'dropCoins', amount: me.coins }], null);
       }
       for (const item of me.backpack) {
-        offer(
-          `Взять в руки: ${WEAPON_NAMES[item.type]}`,
-          [{ type: 'equip', itemId: item.id }],
-          null,
-        );
+        if (item.type === 'potion') {
+          const heal = Math.min(potionHeal(me.maxHp), me.maxHp - me.hp);
+          offer(
+            `Выпить: баночка (${POTION.cost} ОД, +${heal} HP)`,
+            [{ type: 'drink', itemId: item.id }],
+            null,
+          );
+        } else {
+          offer(
+            `Взять в руки: ${ITEM_NAMES[item.type]}`,
+            [{ type: 'equip', itemId: item.id }],
+            null,
+          );
+        }
       }
       if (me.weapon) {
         offer(
-          `Выбросить: ${WEAPON_NAMES[me.weapon.type]}`,
+          `Выбросить: ${ITEM_NAMES[me.weapon.type]}`,
           [{ type: 'drop', itemId: me.weapon.id }],
           null,
         );
@@ -904,6 +918,11 @@ export class GameScene extends Phaser.Scene {
       case 'gameOver':
         this.showGameOver(event.status);
         break;
+      case 'drank':
+        if (event.actorId === this.myId) this.log(`вы выпили баночку: +${event.healed} HP`);
+        else if (this.actors.spriteOf(event.actorId)?.visible)
+          this.log(`${this.names.get(event.actorId) ?? '?'} выпил баночку`);
+        break;
       case 'moved':
       case 'bumped':
       case 'waited':
@@ -922,7 +941,7 @@ export class GameScene extends Phaser.Scene {
     for (const actor of Object.values(state.actors)) {
       this.names.set(actor.id, actor.kind === 'monster' ? SPECIES_NAMES[actor.species] : 'игрок');
       for (const item of [...(actor.weapon ? [actor.weapon] : []), ...actor.backpack]) {
-        this.names.set(item.id, WEAPON_NAMES[item.type]);
+        this.names.set(item.id, ITEM_NAMES[item.type]);
       }
     }
     for (const item of Object.values(state.items)) this.names.set(item.id, lootName(item));
@@ -1038,8 +1057,8 @@ export class GameScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
     const summary = loot
-      ? `Вынесено: монет ${loot.coins} · в руках: ${WEAPON_NAMES[loot.weapon?.type ?? 'none']} · ` +
-        `в рюкзаке: ${loot.backpack.map((i) => WEAPON_NAMES[i.type]).join(', ') || 'пусто'}`
+      ? `Вынесено: монет ${loot.coins} · в руках: ${ITEM_NAMES[loot.weapon?.type ?? 'none']} · ` +
+        `в рюкзаке: ${loot.backpack.map((i) => ITEM_NAMES[i.type]).join(', ') || 'пусто'}`
       : 'Всё, что вы несли, потеряно';
     this.ui.text(width / 2, height / 2 + 26, summary).setOrigin(0.5);
     if (this.isRun && loot) {
@@ -1130,7 +1149,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Действие плана словами; оружие — то, что будет в руках в момент действия. */
-  private describeAction(action: Action, hands: Item | null): string {
+  private describeAction(action: Action, hands: WeaponItem | null): string {
     const name = (id: string): string => this.names.get(id) ?? '?';
     switch (action.type) {
       case 'move':
@@ -1138,7 +1157,7 @@ export class GameScene extends Phaser.Scene {
       case 'attack':
         return hands?.type === 'sword'
           ? 'удар мечом (замах)'
-          : `удар (${WEAPON_NAMES[hands?.type ?? 'none']})`;
+          : `удар (${ITEM_NAMES[hands?.type ?? 'none']})`;
       case 'wait':
         return 'ждать';
       case 'equip':
@@ -1151,6 +1170,8 @@ export class GameScene extends Phaser.Scene {
         return 'выбросить ключ';
       case 'openDoor':
         return 'открыть дверь';
+      case 'drink':
+        return 'выпить баночку';
     }
   }
 
@@ -1174,7 +1195,7 @@ export class GameScene extends Phaser.Scene {
     const head = `${this.title} · Ход ${turn} · HP ${me.hp}/${me.maxHp}`;
     const slots = Array.from({ length: BACKPACK_SIZE }, (_, i) => {
       const item = me.backpack[i];
-      return `${i + 1}) ${item ? WEAPON_NAMES[item.type] : '—'}`;
+      return `${i + 1}) ${item ? ITEM_NAMES[item.type] : '—'}`;
     }).join(' ');
     const inventory =
       `Руки: ${weaponLabel(me.weapon)} · Рюкзак: ${slots} · Монеты: ${me.coins}` +

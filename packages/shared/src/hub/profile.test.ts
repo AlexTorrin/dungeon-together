@@ -108,4 +108,14 @@ describe('забег', () => {
     ];
     expect(new Set(ids).size).toBe(3);
   });
+
+  it('баночка: продаётся за 10, продаётся обратно за 5, в руки не берётся и не возвращается в руки', () => {
+    const bought = buy({ ...EMPTY_PROFILE, coins: 10 }, 'potion');
+    expect(bought).toEqual({ coins: 0, hands: null, backpack: ['potion'], chest: [] });
+    if (!bought) throw new Error('не купилась');
+    expect(sell(bought, { place: 'backpack', index: 0 })?.coins).toBe(5);
+    expect(move(bought, { place: 'backpack', index: 0 }, 'hands')).toBeNull();
+    const carried: Carried = { coins: 0, weapon: null, backpack: [{ id: 'h', type: 'potion' }] };
+    expect(finishRun(EMPTY_PROFILE, carried)).toMatchObject({ hands: null, backpack: ['potion'] });
+  });
 });

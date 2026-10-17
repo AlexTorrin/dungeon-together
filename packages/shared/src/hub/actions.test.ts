@@ -6,7 +6,7 @@ describe('действия лагеря', () => {
   const p: Profile = { coins: 4, hands: 'sword', backpack: [], chest: ['bow'] };
 
   it('применяются теми же правилами, что buy / sell / move', () => {
-    expect(applyHubAction(p, { type: 'buy', weapon: 'knife' })).toMatchObject({
+    expect(applyHubAction(p, { type: 'buy', item: 'knife' })).toMatchObject({
       coins: 2,
       backpack: ['knife'],
     });
@@ -17,12 +17,12 @@ describe('действия лагеря', () => {
     expect(
       applyHubAction(p, { type: 'move', from: { place: 'chest', index: 0 }, to: 'backpack' }),
     ).toMatchObject({ backpack: ['bow'], chest: [] });
-    expect(applyHubAction(EMPTY_PROFILE, { type: 'buy', weapon: 'bow' })).toBeNull();
+    expect(applyHubAction(EMPTY_PROFILE, { type: 'buy', item: 'bow' })).toBeNull();
   });
 
   it('разбор: только известные действия и слоты', () => {
-    expect(parseHubAction({ type: 'buy', weapon: 'bow' })).toEqual({ type: 'buy', weapon: 'bow' });
-    expect(parseHubAction({ type: 'buy', weapon: 'laser' })).toBeNull();
+    expect(parseHubAction({ type: 'buy', item: 'bow' })).toEqual({ type: 'buy', item: 'bow' });
+    expect(parseHubAction({ type: 'buy', item: 'laser' })).toBeNull();
     expect(parseHubAction({ type: 'move', from: { place: 'hands' }, to: 'floor' })).toBeNull();
     expect(parseHubAction({ type: 'sell', slot: { place: 'chest', index: -1 } })).toBeNull();
     expect(parseHubAction({ type: 'hack' })).toBeNull();

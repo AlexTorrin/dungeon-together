@@ -2,7 +2,9 @@ import { ACTION_POINTS, actionCost } from '../config/turn';
 import { step } from '../direction';
 import { canStep } from '../map/pathfinding';
 import { chebyshev } from '../map/geometry';
-import type { Action, Actor, GameState, Item, Plan } from '../types';
+import { potionHeal } from '../config/potion';
+import { isWeapon } from '../items';
+import type { Action, Actor, GameState, Item, ItemId, Plan, WeaponItem } from '../types';
 import { canAttack } from './combat';
 
 const WAIT: Action = { type: 'wait' };
@@ -42,7 +44,7 @@ function applyExpected(world: World, actor: Actor, action: Action): Actor | null
       return canAttack(map, actor, action.target) ? actor : null;
     case 'equip': {
       const item = actor.backpack.find((i) => i.id === action.itemId);
-      if (!item) return null;
+      if (!item || !isWeapon(item)) return null; // в руки — только оружие
       return { ...actor, weapon: item, backpack: swapOut(actor.backpack, item, actor.weapon) };
     }
     case 'drop': {
@@ -58,13 +60,30 @@ function applyExpected(world: World, actor: Actor, action: Action): Actor | null
       return actor.keys > 0 ? { ...actor, keys: actor.keys - 1 } : null;
     case 'openDoor':
       return canOpenDoor(world, actor) ? { ...actor, keys: actor.keys - 1 } : null;
+    case 'drink': {
+      const item = actor.backpack.find((i) => i.id === action.itemId);
+      if (item?.type !== 'potion') return null;
+      return { ...actor, ...drink(actor, item.id) };
+    }
     case 'wait':
       return actor;
   }
 }
 
+/** Актор выпил баночку itemId: HP + половина максимума (не выше максимума), баночки нет. */
+export function drink(actor: Actor, itemId: ItemId): Pick<Actor, 'hp' | 'backpack'> {
+  return {
+    hp: Math.min(actor.maxHp, actor.hp + potionHeal(actor.maxHp)),
+    backpack: actor.backpack.filter((i) => i.id !== itemId),
+  };
+}
+
 /** Рюкзак после «взять item в руки»: item уходит, на его место — то, что было в руках. */
-export function swapOut(backpack: readonly Item[], item: Item, hands: Item | null): Item[] {
+export function swapOut(
+  backpack: readonly Item[],
+  item: WeaponItem,
+  hands: WeaponItem | null,
+): Item[] {
   return backpack.flatMap((i) => (i.id !== item.id ? [i] : hands ? [hands] : []));
 }
 

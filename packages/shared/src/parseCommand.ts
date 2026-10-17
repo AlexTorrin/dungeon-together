@@ -38,7 +38,7 @@ export function parseAction(raw: unknown): Action | null {
     const amount = field(raw, 'amount');
     return isInteger(amount) && amount > 0 ? { type, amount } : null;
   }
-  if (type === 'equip' || type === 'drop') {
+  if (type === 'equip' || type === 'drop' || type === 'drink') {
     const itemId = field(raw, 'itemId');
     return isId(itemId) ? { type, itemId } : null;
   }

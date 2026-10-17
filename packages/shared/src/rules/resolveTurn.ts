@@ -4,6 +4,7 @@ import { ACTION_POINTS } from '../config/turn';
 import { withExplored } from '../map/fov';
 import { setTile } from '../map/gameMap';
 import { samePos } from '../map/geometry';
+import { inHands, isWeapon, onGround } from '../items';
 import { allocateId } from '../state/ids';
 import type {
   Action,
@@ -24,7 +25,7 @@ import type {
 import type { CommandResult } from './applyCommand';
 import { canAttack, weaponOf } from './combat';
 import { chooseMonsterPlan } from './monsterAi';
-import { canOpenDoor, simulatePlan, swapOut } from './plan';
+import { canOpenDoor, drink, simulatePlan, swapOut } from './plan';
 import { resolveMoves, type ActorIntent } from './resolveMoves';
 
 /** Изменяемый «черновик» состояния на время разрешения хода; в состояние уходят обычные объекты. */
@@ -120,8 +121,9 @@ function dropNew(turn: Turn, actorId: ActorId, loot: Loot, at: Position): void {
  * Одна фаза: все действуют одновременно.
  *
  * 1. Шаги — с конфликтами (resolveMoves).
- * 2. Подбор: кто шагнул на клетку, забирает монеты и ключи и кладёт оружие в рюкзак, пока есть место.
- *    Взять в руки, выбросить, открыть дверь — тоже здесь, до ударов.
+ * 2. Подбор: кто шагнул на клетку, забирает монеты и ключи и кладёт оружие и баночки в рюкзак,
+ *    пока есть место. Взять в руки, выбросить, выпить, открыть дверь — тоже здесь, до ударов:
+ *    выпивший во второй фазе лечится раньше, чем по нему ударят в этой фазе.
  *    Игрок в открытой двери покидает уровень со всем, что несёт.
  * 3. Удары — по клеткам, где акторы стоят ПОСЛЕ шагов этой фазы. Отошёл — увернулся, шагнул под
  *    удар — получил. Удар, который с фактической позиции уже не достаёт (упёрся в стену, цель за
@@ -171,15 +173,16 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
     }
   }
 
-  // 2. Подбор: всё, что лежит на клетке (оружие — пока есть место в рюкзаке)
+  // 2. Подбор: всё, что лежит на клетке (оружие и баночки — пока есть место в рюкзаке)
   for (const id of moved) {
     let actor = actors.get(id);
     if (!actor) continue;
     for (const item of [...items.values()]) {
       if (!samePos(item.pos, actor.pos)) continue;
-      if (item.kind === 'weapon') {
+      const carried = inHands(item);
+      if (carried) {
         if (actor.backpack.length >= BACKPACK_SIZE) continue;
-        actor = { ...actor, backpack: [...actor.backpack, { id: item.id, type: item.type }] };
+        actor = { ...actor, backpack: [...actor.backpack, carried] };
       } else if (item.kind === 'coins') {
         actor = { ...actor, coins: actor.coins + item.amount };
       } else {
@@ -191,13 +194,13 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
     actors.set(id, actor);
   }
 
-  //    Взять в руки, выбросить, открыть дверь
+  //    Взять в руки, выбросить, выпить, открыть дверь
   for (const { id, action } of intents) {
     const actor = actors.get(id);
     if (!actor) continue;
     if (action.type === 'equip') {
       const item = actor.backpack.find((i) => i.id === action.itemId);
-      if (!item) continue; // проверено в плане; на всякий случай — просто ничего
+      if (!item || !isWeapon(item)) continue; // проверено в плане; на всякий случай — ничего
       actors.set(id, {
         ...actor,
         weapon: item,
@@ -215,8 +218,20 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
         weapon: actor.weapon?.id === item.id ? null : actor.weapon,
         backpack: actor.backpack.filter((i) => i.id !== item.id),
       });
-      items.set(item.id, { kind: 'weapon', ...item, pos: actor.pos });
+      items.set(item.id, onGround(item, actor.pos));
       events.push({ type: 'itemDropped', actorId: id, itemId: item.id, at: actor.pos });
+    } else if (action.type === 'drink') {
+      const item = actor.backpack.find((i) => i.id === action.itemId);
+      if (item?.type !== 'potion') continue;
+      const after = { ...actor, ...drink(actor, item.id) };
+      actors.set(id, after);
+      events.push({
+        type: 'drank',
+        actorId: id,
+        itemId: item.id,
+        healed: after.hp - actor.hp,
+        hp: after.hp,
+      });
     } else if (action.type === 'dropCoins') {
       if (action.amount <= 0 || action.amount > actor.coins) continue;
       actors.set(id, { ...actor, coins: actor.coins - action.amount });
@@ -269,7 +284,7 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
     actors.delete(actor.id);
     events.push({ type: 'died', actorId: actor.id, at: actor.pos });
     for (const item of [...(actor.weapon ? [actor.weapon] : []), ...actor.backpack]) {
-      items.set(item.id, { kind: 'weapon', ...item, pos: actor.pos });
+      items.set(item.id, onGround(item, actor.pos));
       events.push({ type: 'itemDropped', actorId: actor.id, itemId: item.id, at: actor.pos });
     }
     if (actor.coins > 0) dropNew(turn, actor.id, { kind: 'coins', amount: actor.coins }, actor.pos);

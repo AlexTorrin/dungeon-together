@@ -1,3 +1,4 @@
+import { isWeapon } from '../items';
 import { AGGRO_RADIUS, AI_AIM_AT_CURRENT_CHANCE, ITEM_SEARCH_RADIUS } from '../config/ai';
 import { ACTION_POINTS, actionCost } from '../config/turn';
 import { WEAPONS } from '../config/weapons';
@@ -77,10 +78,10 @@ export function chooseMonsterAction(
   rng: RngState,
   apLeft: number = ACTION_POINTS,
 ): readonly [Action, RngState] {
-  if (!monster.weapon && monster.backpack.length > 0) {
-    const best = [...monster.backpack].sort(
-      (a, b) => WEAPONS[b.type].damage - WEAPONS[a.type].damage,
-    )[0];
+  // Баночки монстры носят (и роняют при смерти), но не пьют — в руки берут только оружие.
+  const weapons = monster.backpack.filter(isWeapon);
+  if (!monster.weapon && weapons.length > 0) {
+    const best = [...weapons].sort((a, b) => WEAPONS[b.type].damage - WEAPONS[a.type].damage)[0];
     if (best) return [{ type: 'equip', itemId: best.id }, rng];
   }
 
@@ -100,7 +101,7 @@ export function chooseMonsterAction(
   // Игрок рядом, но на удар этим оружием ОД не хватает (замах мечом) — ждём следующего хода.
   if (players.some((p) => canAttack(state.map, monster, p.pos))) return [{ type: 'wait' }, rng];
 
-  if (!monster.weapon && monster.backpack.length === 0) {
+  if (!monster.weapon && weapons.length === 0) {
     const items = Object.values(state.items).filter(
       (i) => i.kind === 'weapon' && sees.has(posKey(i.pos)),
     );
@@ -138,7 +139,7 @@ export function chooseMonsterPlan(
       self = { ...self, pos: step(self.pos, action.direction) };
     } else if (action.type === 'equip') {
       const item = self.backpack.find((i) => i.id === action.itemId);
-      if (item)
+      if (item && isWeapon(item))
         self = { ...self, weapon: item, backpack: swapOut(self.backpack, item, self.weapon) };
     }
   }

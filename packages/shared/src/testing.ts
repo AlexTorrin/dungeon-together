@@ -6,16 +6,18 @@ import type {
   Actor,
   GameState,
   GroundItem,
-  Item,
+  PotionItem,
   MonsterActor,
   MonsterSpecies,
   PlayerActor,
+  WeaponItem,
   WeaponType,
 } from './types';
 
 export const TEST_SEED = 42;
 
-export const weapon = (id: string, type: WeaponType): Item => ({ id, type });
+export const weapon = (id: string, type: WeaponType): WeaponItem => ({ id, type });
+export const potion = (id: string): PotionItem => ({ id, type: 'potion' });
 
 export function playerAt(
   id: string,
