@@ -1,6 +1,6 @@
 import type { Command } from './commands';
 import { isDirection } from './direction';
-import type { Action } from './types';
+import type { Action, Position } from './types';
 
 /** Длиннее id не бывает: защита от мусора, а не правило игры. */
 export const MAX_PLAYER_ID_LENGTH = 64;
@@ -24,11 +24,26 @@ export function parseAction(raw: unknown): Action | null {
   if (!isObject(raw)) return null;
   const type = field(raw, 'type');
   if (type === 'wait') return { type: 'wait' };
-  if (type !== 'move' && type !== 'attack') return null;
-
-  const direction = field(raw, 'direction');
-  return isDirection(direction) ? { type, direction } : null;
+  if (type === 'move') {
+    const direction = field(raw, 'direction');
+    return isDirection(direction) ? { type, direction } : null;
+  }
+  if (type === 'attack') {
+    const target = parsePosition(field(raw, 'target'));
+    return target ? { type, target } : null;
+  }
+  return null;
 }
+
+/** Клетка: целые x и y. Попадает ли она на карту, решают правила, а не парсер. */
+function parsePosition(raw: unknown): Position | null {
+  if (!isObject(raw)) return null;
+  const x = field(raw, 'x');
+  const y = field(raw, 'y');
+  return isInteger(x) && isInteger(y) ? { x, y } : null;
+}
+
+const isInteger = (value: unknown): value is number => Number.isSafeInteger(value);
 
 /**
  * Разбирает команду из недоверенных данных. Проверяет только форму: существует ли игрок

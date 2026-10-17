@@ -1,6 +1,6 @@
 import type { BumpReason } from '../commands';
 import { step } from '../direction';
-import { isWalkable } from '../map/gameMap';
+import { canStep } from '../map/pathfinding';
 import type { Action, ActorId, GameMap, Position } from '../types';
 
 export interface ActorIntent {
@@ -21,7 +21,7 @@ const key = ({ x, y }: Position): string => `${x},${y}`;
  * результат не зависит от порядка, в котором они выбирали действия:
  *
  * 0. Кто не шагает (`wait`, `attack`), стоит на месте.
- * 1. Шаг в стену сразу проваливается.
+ * 1. Шаг в стену (или по диагонали через угол стены) сразу проваливается.
  * 2. Дальше повторяем, пока что-то меняется (провал одного может вызвать провал другого):
  *    - несколько акторов целятся в одну клетку → проваливаются все;
  *    - цель занята тем, кто остаётся на месте → провал;
@@ -42,7 +42,7 @@ export function resolveMoves(
       continue;
     }
     const to = step(from, action.direction);
-    if (isWalkable(map, to)) targets.set(id, to);
+    if (canStep(map, from, action.direction)) targets.set(id, to);
     else outcomes.set(id, { kind: 'bumped', at: to, reason: 'wall' });
   }
 

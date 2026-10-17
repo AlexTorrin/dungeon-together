@@ -15,8 +15,12 @@ describe('parseAction', () => {
       { type: 'move', direction: 'up' },
     ],
     [
-      { type: 'attack', direction: 'left' },
-      { type: 'attack', direction: 'left' },
+      { type: 'move', direction: 'upLeft' },
+      { type: 'move', direction: 'upLeft' },
+    ],
+    [
+      { type: 'attack', target: { x: 3, y: -1 } },
+      { type: 'attack', target: { x: 3, y: -1 } },
     ],
   ])('accepts %j', (raw, expected) => {
     expect(parseAction(raw)).toEqual(expected);
@@ -32,7 +36,12 @@ describe('parseAction', () => {
     ['unknown type', { type: 'teleport', direction: 'up' }],
     ['move without direction', { type: 'move' }],
     ['unknown direction', { type: 'move', direction: 'sideways' }],
-    ['direction of wrong type', { type: 'attack', direction: 1 }],
+    ['direction of wrong type', { type: 'move', direction: 1 }],
+    ['attack by direction', { type: 'attack', direction: 'left' }],
+    ['attack without target', { type: 'attack' }],
+    ['fractional target', { type: 'attack', target: { x: 1.5, y: 2 } }],
+    ['string target coords', { type: 'attack', target: { x: '1', y: 2 } }],
+    ['huge target coords', { type: 'attack', target: { x: 1e300, y: 2 } }],
     ['inherited type', Object.create({ type: 'wait' }) as unknown],
   ])('rejects %s', (_name, raw) => {
     expect(parseAction(raw)).toBeNull();
@@ -42,6 +51,10 @@ describe('parseAction', () => {
     const parsed = parseAction({ type: 'move', direction: 'down', hp: 999, extra: { a: 1 } });
     expect(parsed).toStrictEqual({ type: 'move', direction: 'down' });
     expect(parseAction({ type: 'wait', direction: 'up' })).toStrictEqual({ type: 'wait' });
+    expect(parseAction({ type: 'attack', target: { x: 1, y: 2, z: 3 } })).toStrictEqual({
+      type: 'attack',
+      target: { x: 1, y: 2 },
+    });
   });
 });
 

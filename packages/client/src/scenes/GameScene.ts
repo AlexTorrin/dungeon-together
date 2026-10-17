@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   createGameState,
+  delta,
   step,
   type Action,
   type Actor,
@@ -31,7 +32,8 @@ const K = Phaser.Input.Keyboard.KeyCodes;
 interface LocalPlayer {
   readonly id: PlayerId;
   readonly name: string;
-  readonly move: Readonly<Record<Direction, readonly KeyCode[]>>;
+  /** Пока только 4 прямых направления; диагонали и подтверждение — следующий шаг. */
+  readonly move: Readonly<Partial<Record<Direction, readonly KeyCode[]>>>;
   readonly wait: readonly KeyCode[];
   readonly look: Look;
 }
@@ -270,7 +272,18 @@ export class GameScene extends Phaser.Scene {
           break;
         }
         case 'waited':
+        case 'attacked': // анимаций ударов пока нет
+        case 'damaged':
+        case 'died': // спрайт уберёт syncActors
+        case 'itemPickedUp':
+        case 'itemDropped':
+        case 'gameOver':
           break;
+        default: {
+          // Новый тип события без обработки — ошибка компиляции, а не молчаливый пропуск.
+          const unhandled: never = event;
+          throw new Error(`Unhandled event ${JSON.stringify(unhandled)}`);
+        }
         case 'turnResolved':
           for (const mark of this.readyMarks.values()) mark.setVisible(false);
           this.submitted.clear();
@@ -296,8 +309,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private face(sprite: Phaser.GameObjects.Sprite, direction: Direction): void {
-    if (direction === 'left') sprite.setFlipX(true);
-    if (direction === 'right') sprite.setFlipX(false);
+    const { x } = delta(direction);
+    if (x < 0) sprite.setFlipX(true);
+    if (x > 0) sprite.setFlipX(false);
   }
 
   private syncMarks(): void {

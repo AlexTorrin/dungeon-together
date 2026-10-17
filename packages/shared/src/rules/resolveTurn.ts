@@ -1,39 +1,51 @@
 import type { GameEvent } from '../commands';
-import type { Action, Actor, ActorId, GameState } from '../types';
+import { samePos } from '../map/geometry';
+import type { Action, Actor, ActorId, GameState, GameStatus, GroundItem, ItemId } from '../types';
 import type { CommandResult } from './applyCommand';
+import { weaponOf } from './combat';
+import { chooseMonsterAction } from './monsterAi';
 import { resolveMoves, type ActorIntent } from './resolveMoves';
 
 /**
- * Действие актора в этот ход. Игроки — то, что выбрали; монстры пока стоят:
- * их ИИ (шаг 4) будет выбирать действие здесь же, поэтому игрокам никогда не нужно «ждать монстров».
- */
-function actionOf(state: GameState, actor: Actor): Action {
-  if (actor.kind === 'player') return state.pendingActions[actor.id] ?? { type: 'wait' };
-  return { type: 'wait' };
-}
-
-/**
- * Разрешает ход, когда все игроки выбрали действия.
- * Атака пока ничего не делает (бой — шаг 4): актор стоит на месте, как при `wait`.
+ * Разрешает ход, когда все игроки выбрали действия. Фазы (порядок важен):
+ *
+ * 1. Действия: игроки — то, что выбрали; монстры — решает ИИ (по состоянию на начало хода).
+ * 2. Шаги — одновременно, с конфликтами (resolveMoves).
+ * 3. Подбор: кто шагнул на предмет, берёт его, а своё оружие кладёт на эту клетку.
+ * 4. Удары — по клеткам, где акторы стоят ПОСЛЕ шагов. Отошёл — увернулся,
+ *    шагнул под удар — получил. Все удары одновременны: убитый в этот ход тоже успевает ударить.
+ * 5. Смерти: hp ≤ 0 — актор удаляется, его оружие падает на пол.
+ * 6. Конец игры: игроков не осталось — поражение; убит последний монстр — победа.
  */
 export function resolveTurn(state: GameState): CommandResult {
-  const actors = Object.values(state.actors);
-  const intents: ActorIntent[] = actors.map((actor) => ({
-    id: actor.id,
-    from: actor.pos,
-    action: actionOf(state, actor),
-  }));
-  const outcomes = resolveMoves(state.map, intents);
-
   const events: GameEvent[] = [];
-  const nextActors: Record<ActorId, Actor> = {};
+
+  // 1. Действия
+  let rng = state.rng;
+  const intents: ActorIntent[] = Object.values(state.actors).map((actor) => {
+    let action: Action;
+    if (actor.kind === 'player') {
+      action = state.pendingActions[actor.id] ?? { type: 'wait' };
+    } else {
+      [action, rng] = chooseMonsterAction(state, actor, rng);
+    }
+    return { id: actor.id, from: actor.pos, action };
+  });
+
+  // 2. Шаги
+  // Внутри — Map (удобно удалять), в состояние уходят обычные объекты.
+  const actors = new Map<ActorId, Actor>();
+  const outcomes = resolveMoves(state.map, intents);
+  const moved = new Set<ActorId>();
   for (const { id, from, action } of intents) {
     const actor = state.actors[id];
     const outcome = outcomes.get(id);
     if (!actor || !outcome) throw new Error(`Actor ${id} lost during turn resolution`);
+    actors.set(id, actor);
 
-    if (outcome.kind === 'moved' && action.type === 'move') {
-      nextActors[id] = { ...actor, pos: outcome.to };
+    if (action.type === 'move' && outcome.kind === 'moved') {
+      actors.set(id, { ...actor, pos: outcome.to });
+      moved.add(id);
       events.push({
         type: 'moved',
         actorId: id,
@@ -41,8 +53,7 @@ export function resolveTurn(state: GameState): CommandResult {
         to: outcome.to,
         direction: action.direction,
       });
-    } else if (outcome.kind === 'bumped' && action.type === 'move') {
-      nextActors[id] = actor;
+    } else if (action.type === 'move' && outcome.kind === 'bumped') {
       events.push({
         type: 'bumped',
         actorId: id,
@@ -50,15 +61,82 @@ export function resolveTurn(state: GameState): CommandResult {
         direction: action.direction,
         reason: outcome.reason,
       });
+    } else if (action.type === 'attack') {
+      events.push({ type: 'attacked', actorId: id, target: action.target });
     } else {
-      nextActors[id] = actor;
       events.push({ type: 'waited', actorId: id });
     }
   }
+
+  // 3. Подбор
+  const items = new Map<ItemId, GroundItem>(Object.entries(state.items));
+  for (const id of moved) {
+    const actor = actors.get(id);
+    const found = actor && [...items.values()].find((item) => samePos(item.pos, actor.pos));
+    if (!actor || !found) continue;
+    items.delete(found.id);
+    if (actor.weapon) {
+      items.set(actor.weapon.id, { ...actor.weapon, pos: actor.pos });
+      events.push({ type: 'itemDropped', itemId: actor.weapon.id, at: actor.pos });
+    }
+    actors.set(id, { ...actor, weapon: { id: found.id, type: found.type } });
+    events.push({ type: 'itemPickedUp', actorId: id, itemId: found.id });
+  }
+
+  // 4. Удары: урон считается по позициям после шагов и применяется разом
+  const damage = new Map<ActorId, number>();
+  for (const { id, action } of intents) {
+    const attacker = actors.get(id);
+    if (action.type !== 'attack' || !attacker) continue;
+    const { damage: amount } = weaponOf(attacker);
+    for (const victim of actors.values()) {
+      if (!samePos(victim.pos, action.target)) continue;
+      const hp = victim.hp - (damage.get(victim.id) ?? 0) - amount;
+      damage.set(victim.id, (damage.get(victim.id) ?? 0) + amount);
+      events.push({ type: 'damaged', actorId: victim.id, by: id, amount, hp });
+    }
+  }
+  for (const [id, amount] of damage) {
+    const actor = actors.get(id);
+    if (actor) actors.set(id, { ...actor, hp: actor.hp - amount });
+  }
+
+  // 5. Смерти
+  for (const actor of [...actors.values()]) {
+    if (actor.hp > 0) continue;
+    actors.delete(actor.id);
+    events.push({ type: 'died', actorId: actor.id, at: actor.pos });
+    if (actor.weapon) {
+      items.set(actor.weapon.id, { ...actor.weapon, pos: actor.pos });
+      events.push({ type: 'itemDropped', itemId: actor.weapon.id, at: actor.pos });
+    }
+  }
+
+  // 6. Конец игры
+  const status = nextStatus(state, [...actors.values()]);
   events.push({ type: 'turnResolved', turn: state.turn });
+  if (status !== 'playing') events.push({ type: 'gameOver', status });
 
   return {
-    state: { ...state, actors: nextActors, pendingActions: {}, turn: state.turn + 1 },
+    state: {
+      ...state,
+      actors: Object.fromEntries(actors),
+      items: Object.fromEntries(items),
+      rng,
+      status,
+      pendingActions: {},
+      turn: state.turn + 1,
+    },
     events,
   };
+}
+
+function nextStatus(before: GameState, after: readonly Actor[]): GameStatus {
+  const count = (actors: readonly Actor[], kind: Actor['kind']): number =>
+    actors.filter((a) => a.kind === kind).length;
+  if (count(after, 'player') === 0) return 'lost';
+  // Победа — только когда убит последний монстр: комната без монстров не выигрывается сама.
+  const monstersBefore = count(Object.values(before.actors), 'monster');
+  if (monstersBefore > 0 && count(after, 'monster') === 0) return 'won';
+  return 'playing';
 }

@@ -68,7 +68,7 @@ describe('resizeRoom', () => {
         { species: 'skull' as const, pos: { x: 1, y: 1 } },
         { species: 'vampire' as const, pos: { x: 5, y: 5 } },
       ],
-      items: [{ type: 'darts' as const, pos: { x: 4, y: 1 } }],
+      items: [{ type: 'ranged' as const, pos: { x: 4, y: 1 } }],
     };
     const resized = resizeRoom(room, 4, 4);
     expect(resized.monsters).toEqual([{ species: 'skull', pos: { x: 1, y: 1 } }]);

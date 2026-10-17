@@ -1,6 +1,7 @@
 import type { Command } from '../commands';
 import type { GameState, PlayerActor, PlayerId } from '../types';
 import type { CommandResult } from './applyCommand';
+import { canAttack } from './combat';
 import { resolveTurn } from './resolveTurn';
 
 type SubmitActionCommand = Extract<Command, { type: 'submitAction' }>;
@@ -14,7 +15,8 @@ function findPlayer(state: GameState, id: PlayerId): PlayerActor | undefined {
 
 /**
  * Игрок фиксирует действие на текущий ход. Игнорируется (без событий): повторный выбор
- * в том же ходу, неизвестный id или id монстра, команда после конца игры.
+ * в том же ходу, неизвестный id или id монстра, команда после конца игры, удар по клетке,
+ * до которой не достать (дальность оружия, стены, своя клетка).
  */
 export function submitAction(
   state: GameState,
@@ -22,8 +24,10 @@ export function submitAction(
 ): CommandResult {
   const ignored = { state, events: [] };
   if (state.status !== 'playing') return ignored;
-  if (!findPlayer(state, playerId)) return ignored;
+  const player = findPlayer(state, playerId);
+  if (!player) return ignored;
   if (Object.hasOwn(state.pendingActions, playerId)) return ignored;
+  if (action.type === 'attack' && !canAttack(state.map, player, action.target)) return ignored;
 
   const next: GameState = {
     ...state,

@@ -41,7 +41,11 @@ export {
   setRoomSpawn,
 } from './map/room';
 export { DEMO_ROOM } from './map/demoMap';
-export { DIRECTIONS, isDirection, step } from './direction';
+export { DIRECTIONS, delta, directionTo, isDiagonal, isDirection, step } from './direction';
+export { chebyshev, hasLineOfSight, lineCells, posKey, samePos } from './map/geometry';
+export { canStep, findPath } from './map/pathfinding';
+export { attackableCells, canAttack, weaponOf } from './rules/combat';
+export { UNARMED, WEAPONS, type WeaponStats } from './config/weapons';
 export { createGameState } from './state/createGameState';
 export { chance, nextFloat, nextInt, seedRng, type RngState } from './rng';
 export { applyCommand } from './rules/applyCommand';

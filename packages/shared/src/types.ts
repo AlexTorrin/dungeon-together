@@ -12,10 +12,13 @@ export interface GameMap {
   readonly tiles: readonly Tile[];
 }
 
-export type Direction = 'up' | 'down' | 'left' | 'right';
+/** 8 направлений: 4 прямых и 4 диагонали. */
+export type Direction =
+  'up' | 'down' | 'left' | 'right' | 'upLeft' | 'upRight' | 'downLeft' | 'downRight';
 
 export type MonsterSpecies = 'skeleton' | 'skull' | 'vampire';
-export type WeaponType = 'bone' | 'darts' | 'fireFlask' | 'bigFlask';
+/** Ближнее оружие бьёт соседнюю клетку, дальнее — любую в радиусе (см. config/weapons.ts). */
+export type WeaponType = 'melee' | 'ranged';
 
 /** Расстановка в комнате (то, что рисует редактор); id появляются только в GameState. */
 export interface RoomMonster {
@@ -71,10 +74,14 @@ export interface MonsterActor extends ActorBase {
 
 export type Actor = PlayerActor | MonsterActor;
 
-/** Что актор делает в этот ход. */
+/**
+ * Что актор делает в этот ход: шаг в одну из 8 сторон, удар по клетке или ожидание.
+ * Удар бьёт клетку, а не актора: попадёт тот, кто окажется в ней после всех шагов
+ * (или никто — бить можно и пустое место).
+ */
 export type Action =
   | { readonly type: 'move'; readonly direction: Direction }
-  | { readonly type: 'attack'; readonly direction: Direction }
+  | { readonly type: 'attack'; readonly target: Position }
   | { readonly type: 'wait' };
 
 export type GameStatus = 'playing' | 'won' | 'lost';

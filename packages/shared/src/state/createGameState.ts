@@ -1,6 +1,6 @@
 import { MONSTERS, PLAYER_MAX_HP } from '../config/actors';
 import { DIRECTIONS, step } from '../direction';
-import { isWalkable } from '../map/gameMap';
+import { canStep } from '../map/pathfinding';
 import { seedRng } from '../rng';
 import { allocateId } from './ids';
 import type {
@@ -29,7 +29,7 @@ function nearestFreeFloor(room: Room, occupied: ReadonlySet<string>, count: numb
     if (!occupied.has(key(pos))) result.push(pos);
     for (const direction of DIRECTIONS) {
       const next = step(pos, direction);
-      if (!seen.has(key(next)) && isWalkable(room.map, next)) {
+      if (!seen.has(key(next)) && canStep(room.map, pos, direction)) {
         seen.add(key(next));
         queue.push(next);
       }

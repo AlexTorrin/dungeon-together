@@ -194,7 +194,7 @@ describe('createGameState', () => {
     const withMonster: Room = {
       ...room,
       monsters: [{ species: 'skull', pos: { x: 1, y: 1 } }],
-      items: [{ type: 'bone', pos: { x: 4, y: 1 } }],
+      items: [{ type: 'melee', pos: { x: 4, y: 1 } }],
     };
     const state = createGameState(withMonster, ['p1'], SEED);
     expect(state.actors['monster-1']).toEqual({
@@ -207,7 +207,7 @@ describe('createGameState', () => {
       weapon: null,
     });
     expect(state.actors['p1']?.pos).not.toEqual({ x: 1, y: 1 });
-    expect(state.items).toEqual({ 'item-2': { id: 'item-2', type: 'bone', pos: { x: 4, y: 1 } } });
+    expect(state.items).toEqual({ 'item-2': { id: 'item-2', type: 'melee', pos: { x: 4, y: 1 } } });
     expect(state.nextId).toBe(3);
   });
 
@@ -227,63 +227,6 @@ describe('createGameState', () => {
 
   it('rejects duplicate player ids', () => {
     expect(() => createGameState(room, ['p1', 'p1'], SEED)).toThrow(/Duplicate/);
-  });
-});
-
-describe('attack (combat is not implemented yet)', () => {
-  const attack = (direction: 'up' | 'down' | 'left' | 'right'): Action => ({
-    type: 'attack',
-    direction,
-  });
-
-  it('does not move the attacker', () => {
-    const { state: next, events } = submit(
-      stateWith({ p1: { x: 1, y: 1 } }),
-      'p1',
-      attack('right'),
-    );
-    expect(posOf(next, 'p1')).toEqual({ x: 1, y: 1 });
-    expect(events).toContainEqual({ type: 'waited', actorId: 'p1' });
-    expect(next.turn).toBe(2);
-  });
-
-  it('does not reserve the target tile: another player can step into it', () => {
-    let state = stateWith({ p1: { x: 1, y: 1 }, p2: { x: 2, y: 2 } });
-    state = submit(state, 'p1', attack('right')).state;
-    state = submit(state, 'p2', move('up')).state;
-    expect(posOf(state, 'p2')).toEqual({ x: 2, y: 1 });
-  });
-
-  it('blocks a move into the attacker, who stays in place', () => {
-    let state = stateWith({ p1: { x: 1, y: 1 }, p2: { x: 2, y: 1 } });
-    state = submit(state, 'p1', attack('down')).state;
-    const { events } = submit(state, 'p2', move('left'));
-    expect(events).toContainEqual(expect.objectContaining({ actorId: 'p2', reason: 'occupied' }));
-  });
-});
-
-describe('monsters in the turn', () => {
-  const withSkull = (): GameState => {
-    const base = stateWith({ p1: { x: 1, y: 1 } });
-    const state = createGameState(
-      { ...room, monsters: [{ species: 'skull', pos: { x: 2, y: 1 } }] },
-      [],
-      SEED,
-    );
-    return { ...base, actors: { ...base.actors, ...state.actors } };
-  };
-
-  it('does not wait for monsters and treats them as obstacles', () => {
-    const { state, events } = submit(withSkull(), 'p1', move('right'));
-    expect(state.turn).toBe(2);
-    expect(posOf(state, 'p1')).toEqual({ x: 1, y: 1 });
-    expect(events).toContainEqual(expect.objectContaining({ actorId: 'p1', reason: 'occupied' }));
-    expect(events).toContainEqual({ type: 'waited', actorId: 'monster-1' });
-  });
-
-  it('ignores actions submitted for a monster', () => {
-    const state = withSkull();
-    expect(submit(state, 'monster-1', move('left'))).toEqual({ state, events: [] });
   });
 });
 
