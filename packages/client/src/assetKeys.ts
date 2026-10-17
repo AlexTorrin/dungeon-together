@@ -25,6 +25,27 @@ export const ANIMATIONS = {
     frames: frames('Character_animation/priests_idle/priest1/v1', 'priest1_v1', 4),
     frameRate: 6,
   },
+  /** Чужой игрок (не за этой клавиатурой) — пригодится в сетевой игре. */
+  otherPlayerIdle: {
+    key: 'other-player-idle',
+    frames: frames('Character_animation/priests_idle/priest2/v1', 'priest2_v1', 4),
+    frameRate: 6,
+  },
+  skeletonIdle: {
+    key: 'skeleton-idle',
+    frames: frames('Character_animation/monsters_idle/skeleton1/v1', 'skeleton_v1', 4),
+    frameRate: 6,
+  },
+  skullIdle: {
+    key: 'skull-idle',
+    frames: frames('Character_animation/monsters_idle/skull/v1', 'skull_v1', 4),
+    frameRate: 6,
+  },
+  vampireIdle: {
+    key: 'vampire-idle',
+    frames: frames('Character_animation/monsters_idle/vampire/v1', 'vampire_v1', 4),
+    frameRate: 6,
+  },
   torch: {
     key: 'torch',
     frames: frames('items and trap_animation/torch', 'torch', 4),

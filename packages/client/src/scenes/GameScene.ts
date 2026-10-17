@@ -3,15 +3,18 @@ import {
   createGameState,
   step,
   type Action,
+  type Actor,
   type ActorId,
   type Direction,
   type GameEvent,
+  type GameState,
   type PlayerId,
 } from '@dt/shared';
 import { ANIMATIONS, SHEET_ANIMATIONS, lookOf, type Look } from '../assetKeys';
 import { BUMP_DURATION_MS, MOVE_DURATION_MS, TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import type { GameSession } from '../game/GameSession';
 import { LocalGame } from '../game/LocalGame';
+import { lookOfActor } from '../render/actorLooks';
 import { MapView, tileCenter } from '../render/mapView';
 import { UiOverlay } from '../ui/UiOverlay';
 import { SCENES, type GameReturn, type GameSceneData } from './sceneKeys';
@@ -68,6 +71,7 @@ function randomSeed(): number {
  */
 export class GameScene extends Phaser.Scene {
   private session!: GameSession;
+  private ui!: UiOverlay;
   private back!: GameReturn;
   private localPlayers: readonly LocalPlayer[] = [];
   private keys = new Map<KeyCode, Phaser.Input.Keyboard.Key>();
@@ -106,31 +110,10 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     const ui = new UiOverlay(this);
+    this.ui = ui;
     const { state } = this.session;
     new MapView(this, state.map, (obj) => ui.world(obj));
-
-    for (const local of this.localPlayers) {
-      const player = state.actors[local.id];
-      if (player?.kind !== 'player') throw new Error(`Player ${local.id} missing`);
-      const [x, y] = tileCenter(player.pos);
-      const { texture, frame, anim } = local.look;
-      const sprite = ui.world(this.add.sprite(x, y, texture, frame).play(anim));
-      this.sprites.set(local.id, sprite);
-
-      const mark = ui.world(
-        this.add
-          .text(x + MARK_OFFSET.x, y + MARK_OFFSET.y, '✓', {
-            fontFamily: 'monospace',
-            fontSize: '10px',
-            color: '#8fdc6a',
-          })
-          .setOrigin(0.5)
-          .setResolution(ZOOM)
-          .setDepth(1) // поверх всех персонажей, иначе соседний спрайт её закроет
-          .setVisible(false),
-      );
-      this.readyMarks.set(local.id, mark);
-    }
+    this.syncActors(state);
 
     const { map } = state;
     const camera = this.cameras.main
@@ -152,7 +135,10 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ESC', () => this.goBack());
 
     // События приходят асинхронно — в том числе после выхода из сцены, поэтому отписываемся.
-    const unsubscribe = this.session.subscribe((events) => this.handleEvents(events));
+    const unsubscribe = this.session.subscribe((events, next) => {
+      this.handleEvents(events);
+      this.syncActors(next);
+    });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribe);
   }
 
@@ -199,6 +185,57 @@ export class GameScene extends Phaser.Scene {
     // Движение можно держать — его притормаживает анимация шага. У пропуска хода анимации нет,
     // поэтому он срабатывает только на нажатие, иначе удержание пролистывало бы ход каждый кадр.
     return this.wasPressed(local.wait) ? { type: 'wait' } : null;
+  }
+
+  // ---------- Акторы: сверка спрайтов с состоянием ----------
+
+  /**
+   * Сверяет спрайты с state.actors (reconciliation): новым акторам — спрайт, у пропавших —
+   * убрать. Пока идут анимации хода, только создаёт: удалять или двигать спрайт посреди tween
+   * нельзя (tween не завершится, и ввод заблокируется навсегда). Остальное — когда всё затихнет.
+   */
+  private syncActors(state: GameState): void {
+    for (const actor of Object.values(state.actors)) {
+      if (!this.sprites.has(actor.id)) this.addActor(actor);
+    }
+    if (this.runningAnimations > 0) return;
+
+    for (const [id, sprite] of this.sprites) {
+      const actor = state.actors[id];
+      if (!actor) {
+        sprite.destroy();
+        this.sprites.delete(id);
+        this.readyMarks.get(id)?.destroy();
+        this.readyMarks.delete(id);
+        continue;
+      }
+      // Страховка от рассинхрона: в покое спрайт стоит ровно в клетке из состояния.
+      const [x, y] = tileCenter(actor.pos);
+      sprite.setPosition(x, y);
+    }
+    this.syncMarks();
+  }
+
+  private addActor(actor: Actor): void {
+    const [x, y] = tileCenter(actor.pos);
+    const localLooks = new Map(this.localPlayers.map((p) => [p.id, p.look]));
+    const { texture, frame, anim } = lookOfActor(actor, localLooks);
+    this.sprites.set(actor.id, this.ui.world(this.add.sprite(x, y, texture, frame).play(anim)));
+    if (actor.kind !== 'player') return;
+
+    const mark = this.ui.world(
+      this.add
+        .text(x + MARK_OFFSET.x, y + MARK_OFFSET.y, '✓', {
+          fontFamily: 'monospace',
+          fontSize: '10px',
+          color: '#8fdc6a',
+        })
+        .setOrigin(0.5)
+        .setResolution(ZOOM)
+        .setDepth(1) // поверх всех персонажей, иначе соседний спрайт её закроет
+        .setVisible(false),
+    );
+    this.readyMarks.set(actor.id, mark);
   }
 
   // ---------- События → анимации ----------
@@ -252,6 +289,8 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => {
         this.runningAnimations--;
         this.syncMarks();
+        // Последняя анимация хода закончилась — доделываем то, что сверка отложила.
+        if (this.runningAnimations === 0) this.syncActors(this.session.state);
       },
     });
   }

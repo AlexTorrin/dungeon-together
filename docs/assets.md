@@ -6,14 +6,19 @@
 
 ## Что используется сейчас
 
-| Файл                                            | Как используется                                            |
-| ----------------------------------------------- | ----------------------------------------------------------- |
-| `character and tileset/Dungeon_Tileset.png`     | тайлсет карты, 10×10 кадров (индекс = `row * 10 + col`)     |
-| `character and tileset/Dungeon_Character_2.png` | спрайт-лист персонажей 7×2; кадры 2–3 — игрок 2 («в шляпе») |
-| `Character_animation/priests_idle/priest1/v1/*` | игрок 1 (рыцарь), idle 4 кадра                              |
-| `items and trap_animation/torch/torch_*`        | факелы на стенах, 4 кадра                                   |
+| Файл                                               | Как используется                                            |
+| -------------------------------------------------- | ----------------------------------------------------------- |
+| `character and tileset/Dungeon_Tileset.png`        | тайлсет карты, 10×10 кадров (индекс = `row * 10 + col`)     |
+| `character and tileset/Dungeon_Character_2.png`    | спрайт-лист персонажей 7×2; кадры 2–3 — игрок 2 («в шляпе») |
+| `Character_animation/priests_idle/priest1/v1/*`    | игрок 1 (рыцарь), idle 4 кадра                              |
+| `Character_animation/priests_idle/priest2/v1/*`    | чужой игрок (не за этой клавиатурой), idle 4 кадра          |
+| `Character_animation/monsters_idle/skeleton1/v1/*` | монстр `skeleton`                                           |
+| `Character_animation/monsters_idle/skull/v1/*`     | монстр `skull`                                              |
+| `Character_animation/monsters_idle/vampire/v1/*`   | монстр `vampire`                                            |
+| `items and trap_animation/torch/torch_*`           | факелы на стенах, 4 кадра                                   |
 
-Ключи и пути — в `packages/client/src/assetKeys.ts`.
+Ключи и пути — в `packages/client/src/assetKeys.ts`, какой актор как выглядит — в
+`packages/client/src/render/actorLooks.ts`.
 
 ## Карта тайлсета (`Dungeon_Tileset.png`)
 
