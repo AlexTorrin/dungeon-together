@@ -238,7 +238,15 @@ export class GameScene extends Phaser.Scene {
     this.fog = new FogLayer(this, ui);
     this.items = new ItemLayer(this, ui);
     this.intents = new IntentLayer(this, ui);
-    this.actors = new ActorLayer(this, ui, new Map([[this.myId, LOCAL_LOOK]]), () => this.onIdle());
+    // Имена над героями — в сетевой игре (в одиночной герой один, подписывать некого).
+    const labels = this.net ? { names: this.playerNames, mine: this.myId } : null;
+    this.actors = new ActorLayer(
+      this,
+      ui,
+      new Map([[this.myId, LOCAL_LOOK]]),
+      () => this.onIdle(),
+      labels,
+    );
     this.popup = new ActionPopup(this, ui);
     this.rememberNames(state);
     this.visible = teamVision(state);

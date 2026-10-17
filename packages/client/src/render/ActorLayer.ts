@@ -24,6 +24,16 @@ const BUMP_OFFSET = 4;
 const HP_BAR = { width: 12, height: 2, offsetY: 9 } as const;
 const DEATH_FADE_MS = 250;
 const HP_COLORS = { player: 0x8fdc6a, monster: 0xe0503a, back: 0x1a0d13 } as const;
+/** Подпись с именем: низ подписи — столько пикселей над центром спрайта (выше отметки «готов»). */
+const NAME_OFFSET_Y = -12;
+const NAME_COLORS = { mine: '#f2d17a', other: '#e8dcc8' } as const;
+
+/** Имена игроков над героями (сетевая игра); в одиночной — пусто, подписей нет. */
+export interface PlayerLabels {
+  readonly names: Readonly<Record<PlayerId, string>>;
+  /** Наш игрок — его имя другим цветом. */
+  readonly mine: PlayerId;
+}
 
 interface ActorView {
   readonly sprite: Phaser.GameObjects.Sprite;
@@ -31,6 +41,8 @@ interface ActorView {
   readonly hpFill: Phaser.GameObjects.Rectangle;
   /** Только у игроков. */
   readonly mark: Phaser.GameObjects.Text | null;
+  /** Имя над героем — только в сетевой игре. */
+  readonly label: Phaser.GameObjects.Text | null;
 }
 
 /**
@@ -53,6 +65,7 @@ export class ActorLayer {
     private readonly localLooks: ReadonlyMap<PlayerId, Look>,
     /** Вызывается, когда закончилась последняя анимация. */
     private readonly onIdle: () => void,
+    private readonly labels: PlayerLabels | null = null,
   ) {}
 
   /** Идут ли анимации хода (пока да — ввод не принимается). */
@@ -106,6 +119,7 @@ export class ActorLayer {
       view.hpBack.setPosition(x - HP_BAR.width / 2, y + HP_BAR.offsetY);
       view.hpFill.setPosition(x - HP_BAR.width / 2, y + HP_BAR.offsetY);
       view.mark?.setPosition(x + MARK_OFFSET.x, y + MARK_OFFSET.y);
+      view.label?.setPosition(x, y + NAME_OFFSET_Y);
     }
   }
 
@@ -153,10 +167,10 @@ export class ActorLayer {
       }
       case 'died': {
         // Погибший гаснет после того, как всплывёт урон; убирает спрайт сверка в конце хода.
-        const sprite = this.spriteOf(event.actorId);
-        if (sprite?.visible) {
+        const view = this.views.get(event.actorId);
+        if (view?.sprite.visible) {
           this.animate({
-            targets: sprite,
+            targets: view.label ? [view.sprite, view.label] : view.sprite,
             alpha: 0,
             delay: MOVE_DURATION_MS,
             duration: DEATH_FADE_MS,
@@ -198,8 +212,30 @@ export class ActorLayer {
               .setVisible(false),
           )
         : null;
-    this.views.set(actor.id, { sprite, hpBack, hpFill, mark });
+    this.views.set(actor.id, { sprite, hpBack, hpFill, mark, label: this.addLabel(actor) });
     this.followSprites();
+  }
+
+  private addLabel(actor: Actor): Phaser.GameObjects.Text | null {
+    const name =
+      actor.kind === 'player' && this.labels && Object.hasOwn(this.labels.names, actor.id)
+        ? this.labels.names[actor.id]
+        : undefined;
+    if (!this.labels || name === undefined) return null;
+    const color = actor.id === this.labels.mine ? NAME_COLORS.mine : NAME_COLORS.other;
+    return this.ui.world(
+      this.scene.add
+        .text(0, 0, name, {
+          fontFamily: 'monospace',
+          fontSize: '7px',
+          color,
+          stroke: '#1a0d13',
+          strokeThickness: 2,
+        })
+        .setOrigin(0.5, 1)
+        .setResolution(ZOOM)
+        .setDepth(DEPTH.overlays),
+    );
   }
 
   /** Туман войны: монстра вне поля зрения команды не видно — ни спрайта, ни полоски HP. */
@@ -207,6 +243,7 @@ export class ActorLayer {
     view.sprite.setVisible(shown);
     view.hpBack.setVisible(shown);
     view.hpFill.setVisible(shown);
+    view.label?.setVisible(shown);
     if (!shown) view.mark?.setVisible(false);
   }
 
@@ -215,6 +252,7 @@ export class ActorLayer {
     view.hpBack.destroy();
     view.hpFill.destroy();
     view.mark?.destroy();
+    view.label?.destroy();
     this.views.delete(id);
   }
 
