@@ -1,14 +1,24 @@
 export type {
   Action,
+  Actor,
   ActorId,
   Direction,
   GameMap,
   GameState,
-  Player,
+  GameStatus,
+  GroundItem,
+  Item,
+  ItemId,
+  MonsterActor,
+  MonsterSpecies,
+  PlayerActor,
   PlayerId,
   Position,
   Room,
+  RoomItem,
+  RoomMonster,
   Tile,
+  WeaponType,
 } from './types';
 export type { BumpReason, Command, GameEvent } from './commands';
 export type { CommandResult } from './rules/applyCommand';
@@ -25,6 +35,7 @@ export {
   createEmptyRoom,
   isRoomPlayable,
   parseRoom,
+  resizeRoom,
   serializeMap,
   serializeRoom,
   setRoomSpawn,

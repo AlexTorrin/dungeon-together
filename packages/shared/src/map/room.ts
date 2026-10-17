@@ -1,10 +1,13 @@
 import type { GameMap, Position, Room } from '../types';
-import { getTile, isInBounds, isWalkable, setTile } from './gameMap';
+import { getTile, isInBounds, isWalkable, resizeMap, setTile } from './gameMap';
 import { parseAsciiMap } from './parseAsciiMap';
 
 const SPAWN_CHAR = '@';
 
-/** ASCII-комната: как parseAsciiMap, плюс ровно один '@' — точка старта (на полу). */
+/**
+ * ASCII-комната: как parseAsciiMap, плюс ровно один '@' — точка старта (на полу).
+ * Монстров и предметов формат пока не хранит — у разобранной комнаты они пустые.
+ */
 export function parseRoom(ascii: string): Room {
   const rows = ascii.split('\n').filter((row) => row.trim().length > 0);
   const spawns: Position[] = [];
@@ -18,7 +21,7 @@ export function parseRoom(ascii: string): Room {
     throw new Error(`Room must have exactly one '${SPAWN_CHAR}', found ${spawns.length}`);
   }
   const map = parseAsciiMap(rows.join('\n').replaceAll(SPAWN_CHAR, '.'));
-  return { map, spawn };
+  return { map, spawn, monsters: [], items: [] };
 }
 
 export function serializeMap(map: GameMap): string {
@@ -51,6 +54,8 @@ export function createEmptyRoom(width: number, height: number): Room {
   return {
     map: { width, height, tiles },
     spawn: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
+    monsters: [],
+    items: [],
   };
 }
 
@@ -62,5 +67,16 @@ export function isRoomPlayable({ map, spawn }: Room): boolean {
 /** Ставит точку старта и гарантирует, что под ней пол. */
 export function setRoomSpawn(room: Room, spawn: Position): Room {
   if (!isInBounds(room.map, spawn)) return room;
-  return { map: setTile(room.map, spawn, 'floor'), spawn };
+  return { ...room, map: setTile(room.map, spawn, 'floor'), spawn };
+}
+
+/** Меняет размер комнаты: старт прижимается к границе, монстры и предметы за ней пропадают. */
+export function resizeRoom(room: Room, width: number, height: number): Room {
+  const map = resizeMap(room.map, width, height);
+  const inside = ({ pos }: { readonly pos: Position }): boolean => isInBounds(map, pos);
+  const spawn = { x: Math.min(room.spawn.x, width - 1), y: Math.min(room.spawn.y, height - 1) };
+  return setRoomSpawn(
+    { map, spawn, monsters: room.monsters.filter(inside), items: room.items.filter(inside) },
+    spawn,
+  );
 }

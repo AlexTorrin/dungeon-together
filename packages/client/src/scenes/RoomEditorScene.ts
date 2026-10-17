@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import {
   createEmptyRoom,
   isInBounds,
-  resizeMap,
+  resizeRoom,
   serializeRoom,
   setRoomSpawn,
   setTile,
@@ -181,14 +181,12 @@ export class RoomEditorScene extends Phaser.Scene {
   }
 
   private resize(dw: number, dh: number): void {
-    const { map, spawn } = this.draft.room;
-    const width = clampSize(map.width + dw);
-    const height = clampSize(map.height + dh);
-    if (width === map.width && height === map.height) return;
+    const { room } = this.draft;
+    const width = clampSize(room.map.width + dw);
+    const height = clampSize(room.map.height + dh);
+    if (width === room.map.width && height === room.map.height) return;
 
-    const resized: Room = { map: resizeMap(map, width, height), spawn };
-    const clamped = { x: Math.min(spawn.x, width - 1), y: Math.min(spawn.y, height - 1) };
-    this.setRoom(setRoomSpawn(resized, clamped));
+    this.setRoom(resizeRoom(room, width, height));
   }
 
   /** Подменяет комнату в черновике; если ничего не поменялось — ничего не делает. */

@@ -94,8 +94,8 @@ export class GameScene extends Phaser.Scene {
     new MapView(this, state.map, (obj) => ui.world(obj));
 
     for (const local of this.localPlayers) {
-      const player = state.players[local.id];
-      if (!player) throw new Error(`Player ${local.id} missing`);
+      const player = state.actors[local.id];
+      if (player?.kind !== 'player') throw new Error(`Player ${local.id} missing`);
       const [x, y] = tileCenter(player.pos);
       const { texture, frame, anim } = local.look;
       const sprite = ui.world(this.add.sprite(x, y, texture, frame).play(anim));

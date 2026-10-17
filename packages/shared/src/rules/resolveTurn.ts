@@ -1,57 +1,64 @@
 import type { GameEvent } from '../commands';
-import type { Action, GameState, Player, PlayerId } from '../types';
+import type { Action, Actor, ActorId, GameState } from '../types';
 import type { CommandResult } from './applyCommand';
 import { resolveMoves, type ActorIntent } from './resolveMoves';
 
 /**
+ * Действие актора в этот ход. Игроки — то, что выбрали; монстры пока стоят:
+ * их ИИ (шаг 4) будет выбирать действие здесь же, поэтому игрокам никогда не нужно «ждать монстров».
+ */
+function actionOf(state: GameState, actor: Actor): Action {
+  if (actor.kind === 'player') return state.pendingActions[actor.id] ?? { type: 'wait' };
+  return { type: 'wait' };
+}
+
+/**
  * Разрешает ход, когда все игроки выбрали действия.
- * Когда появятся монстры (шаг 4), их ИИ будет выбирать действия здесь же — перед resolveMoves,
- * поэтому игрокам никогда не нужно «ждать монстров».
+ * Атака пока ничего не делает (бой — шаг 4): актор стоит на месте, как при `wait`.
  */
 export function resolveTurn(state: GameState): CommandResult {
-  const players = Object.values(state.players);
-  const intents: ActorIntent[] = players.map((player) => ({
-    id: player.id,
-    from: player.pos,
-    action: state.pendingActions[player.id] ?? { type: 'wait' },
+  const actors = Object.values(state.actors);
+  const intents: ActorIntent[] = actors.map((actor) => ({
+    id: actor.id,
+    from: actor.pos,
+    action: actionOf(state, actor),
   }));
   const outcomes = resolveMoves(state.map, intents);
 
   const events: GameEvent[] = [];
-  const nextPlayers: Record<PlayerId, Player> = {};
-  for (const player of players) {
-    const outcome = outcomes.get(player.id) ?? { kind: 'waited' };
-    const action: Action = state.pendingActions[player.id] ?? { type: 'wait' };
-    const direction = action.type === 'move' ? action.direction : null;
+  const nextActors: Record<ActorId, Actor> = {};
+  for (const { id, from, action } of intents) {
+    const actor = state.actors[id];
+    const outcome = outcomes.get(id);
+    if (!actor || !outcome) throw new Error(`Actor ${id} lost during turn resolution`);
 
-    if (outcome.kind === 'moved' && direction) {
-      nextPlayers[player.id] = { ...player, pos: outcome.to };
+    if (outcome.kind === 'moved' && action.type === 'move') {
+      nextActors[id] = { ...actor, pos: outcome.to };
       events.push({
         type: 'moved',
-        actorId: player.id,
-        from: player.pos,
+        actorId: id,
+        from,
         to: outcome.to,
-        direction,
+        direction: action.direction,
+      });
+    } else if (outcome.kind === 'bumped' && action.type === 'move') {
+      nextActors[id] = actor;
+      events.push({
+        type: 'bumped',
+        actorId: id,
+        at: outcome.at,
+        direction: action.direction,
+        reason: outcome.reason,
       });
     } else {
-      nextPlayers[player.id] = player;
-      if (outcome.kind === 'bumped' && direction) {
-        events.push({
-          type: 'bumped',
-          actorId: player.id,
-          at: outcome.at,
-          direction,
-          reason: outcome.reason,
-        });
-      } else {
-        events.push({ type: 'waited', actorId: player.id });
-      }
+      nextActors[id] = actor;
+      events.push({ type: 'waited', actorId: id });
     }
   }
   events.push({ type: 'turnResolved', turn: state.turn });
 
   return {
-    state: { ...state, players: nextPlayers, pendingActions: {}, turn: state.turn + 1 },
+    state: { ...state, actors: nextActors, pendingActions: {}, turn: state.turn + 1 },
     events,
   };
 }
