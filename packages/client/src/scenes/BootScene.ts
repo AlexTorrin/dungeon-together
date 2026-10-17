@@ -14,6 +14,7 @@ export class BootScene extends Phaser.Scene {
     this.load.spritesheet(TEXTURES.tileset, ASSET_PATHS.tileset, sheet);
     this.load.spritesheet(TEXTURES.characters, ASSET_PATHS.characters, sheet);
     this.load.image(ASSET_PATHS.arrowItem, ASSET_PATHS.arrowItem);
+    this.load.image(ASSET_PATHS.knifeItem, ASSET_PATHS.knifeItem);
 
     for (const anim of Object.values(ANIMATIONS)) {
       for (const path of anim.frames) this.load.image(path, path);

@@ -305,8 +305,7 @@ export class RoomEditorScene extends Phaser.Scene {
       }),
       ...room.items.map(({ type, pos }) => {
         const look = ITEM_LOOKS[type];
-        const frame = 'frame' in look ? look.frame : undefined;
-        return this.ui.world(this.add.image(...tileCenter(pos), look.texture, frame));
+        return this.ui.world(this.add.image(...tileCenter(pos), look.texture, look.frame));
       }),
     ];
   }

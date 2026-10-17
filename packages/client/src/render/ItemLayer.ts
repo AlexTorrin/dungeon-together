@@ -29,9 +29,8 @@ export class ItemLayer {
 
   private create(item: GroundItem): Phaser.GameObjects.Image {
     const look = ITEM_LOOKS[item.type];
-    const frame = 'frame' in look ? look.frame : undefined;
     return this.ui.world(
-      this.scene.add.image(...tileCenter(item.pos), look.texture, frame).setDepth(DEPTH.items),
+      this.scene.add.image(...tileCenter(item.pos), look.texture, look.frame).setDepth(DEPTH.items),
     );
   }
 }

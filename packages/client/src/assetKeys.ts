@@ -1,3 +1,5 @@
+import type { WeaponType } from '@dt/shared';
+
 /** Ключи текстур/анимаций и пути к файлам в assets/. */
 export const TEXTURES = {
   tileset: 'tileset',
@@ -8,6 +10,8 @@ export const ASSET_PATHS = {
   tileset: 'character and tileset/Dungeon_Tileset.png',
   characters: 'character and tileset/Dungeon_Character_2.png',
   arrowItem: 'items and trap_animation/arrow/Just_arrow.png',
+  /** Нарисован для проекта — в паке ножа нет (см. docs/assets.md). */
+  knifeItem: 'custom/knife.png',
 } as const;
 
 export interface FrameAnimation {
@@ -92,11 +96,8 @@ export interface StaticLook {
   readonly frame?: number;
 }
 
-/**
- * Предметы на полу. Готовых спрайтов оружия в паке нет: ближнее — кость из тайлсета
- * (кадр 68), дальнее — стрела.
- */
-export const ITEM_LOOKS = {
-  melee: { texture: TEXTURES.tileset, frame: 68 },
+/** Предметы на полу: ближнее — нож (свой спрайт), дальнее — стрела из пака. */
+export const ITEM_LOOKS: Readonly<Record<WeaponType, StaticLook>> = {
+  melee: { texture: ASSET_PATHS.knifeItem },
   ranged: { texture: ASSET_PATHS.arrowItem },
-} as const satisfies Record<string, StaticLook>;
+};
