@@ -27,10 +27,12 @@
 | `commands.ts`                                                            | `Command` (что шлёт клиент) и `GameEvent` (что происходит) — discriminated unions по `type`              |
 | `direction.ts`                                                           | `Direction`, `step(pos, dir)`, `isDirection` (пригодится для валидации на сервере)                       |
 | `parseCommand.ts`                                                        | `parseCommand` / `parseAction`: `unknown` из сети → `Command` / `Action` или `null`                      |
+| `rng.ts`                                                                 | детерминированный генератор случайных чисел (mulberry32): `seedRng`, `nextFloat`, `nextInt`, `chance`    |
 | `map/gameMap.ts`                                                         | `getTile` (за краем — стена), `isWalkable`, неизменяемые `setTile` и `resizeMap`                         |
 | `map/parseAsciiMap.ts`, `map/room.ts`                                    | ASCII ⇄ карта/комната, `createEmptyRoom`, `setRoomSpawn`, `resizeRoom`                                   |
 | `map/demoMap.ts`                                                         | `DEMO_ROOM` — временная демо-карта до появления генератора                                               |
 | `state/createGameState.ts`                                               | начальное состояние: монстры и предметы из комнаты, игроки — на старт и ближайшие свободные клетки (BFS) |
+| `state/ids.ts`                                                           | `allocateId` — id новых сущностей из счётчика `state.nextId`                                             |
 | `rules/applyCommand.ts`                                                  | единая точка входа логики                                                                                |
 | `rules/submitAction.ts`, `rules/resolveTurn.ts`, `rules/resolveMoves.ts` | очерёдность ходов (ниже)                                                                                 |
 
@@ -43,6 +45,26 @@
 `config/weapons.ts`. id монстров и предметов порядковые (`monster-1`, `item-1`), поэтому
 одинаковая комната всегда даёт одинаковое состояние. `state.items` — предметы на полу,
 `state.status` — `'playing' | 'won' | 'lost'`.
+
+**Случайность и id.** `Math.random()` в `shared` запрещён: сервер и клиенты должны
+получать одинаковый результат. Вместо него в `GameState` хранится `rng` — 32-битное состояние
+генератора (`rng.ts`). Каждый бросок — чистая функция `(rng) → [значение, новый rng]`, и новое
+значение нужно записать обратно в состояние:
+
+```ts
+const [damage, rng] = nextInt(state.rng, 1, 4);
+return { ...state, rng /* , ...урон */ };
+```
+
+Одинаковый seed + одинаковые команды → одинаковая игра (реплеи, отладка по seed, сверка с
+сервером). Seed передаётся в `createGameState(room, playerIds, seed)`; в локальной игре его
+выбирает клиент, в сетевой — сервер. Так же устроены id: `state.nextId` — счётчик,
+`allocateId(nextId, 'monster')` → `['monster-7', 8]`. rot.js держит свой генератор глобально
+(`ROT.RNG`), поэтому при генерации уровня его нужно засевать из `state.rng` прямо перед вызовом,
+а в бою и ИИ использовать только `rng.ts`.
+
+Состояние — простые объекты, массивы и числа (без `Map`, `Set`, классов), поэтому его можно
+отправить по сети как JSON; это закреплено тестом.
 
 **Комната** (`Room`) — карта, старт и расстановка `monsters` / `items` без id.
 
@@ -148,7 +170,8 @@
 
 Только `shared` (Vitest), файлы `*.test.ts` рядом с кодом. Состояние собирается явно,
 обычно из ASCII-комнаты. Сейчас: карты, комнаты, начальное состояние (акторы, монстры, предметы),
-ходы, все виды конфликтов движения, `attack`-заглушка и защита `submitAction` от чужих id.
+ходы, все виды конфликтов движения, `attack`-заглушка, защита `submitAction` от чужих id,
+`parseCommand` и генератор случайных чисел.
 
 ## Запуск в песочнице агента
 

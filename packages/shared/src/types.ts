@@ -91,4 +91,8 @@ export interface GameState {
   readonly turn: number;
   readonly pendingActions: Readonly<Record<PlayerId, Action>>;
   readonly status: GameStatus;
+  /** Состояние генератора случайных чисел (см. rng.ts). Вся случайность — только через него. */
+  readonly rng: number;
+  /** Следующий номер для id новых сущностей (монстров, предметов): id не повторяются. */
+  readonly nextId: number;
 }

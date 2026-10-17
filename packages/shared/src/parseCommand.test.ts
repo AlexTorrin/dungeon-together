@@ -80,7 +80,7 @@ describe('parseCommand', () => {
 
 describe('parseCommand + applyCommand', () => {
   it('a junk direction never reaches the turn, so it cannot block the other players', () => {
-    let state = createGameState(parseRoom('#####\n#@..#\n#...#\n#####'), ['p1', 'p2']);
+    let state = createGameState(parseRoom('#####\n#@..#\n#...#\n#####'), ['p1', 'p2'], 1);
     const junk = parseCommand(
       fromJson('{"type":"submitAction","playerId":"p1","action":{"type":"move","direction":"x"}}'),
     );

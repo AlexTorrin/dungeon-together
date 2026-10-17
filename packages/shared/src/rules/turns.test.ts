@@ -5,6 +5,8 @@ import { PLAYER_MAX_HP } from '../config/actors';
 import type { Action, Actor, GameState, PlayerId, Position, Room } from '../types';
 import { applyCommand } from './applyCommand';
 
+const SEED = 42;
+
 const room = parseRoom(`
 ######
 #@...#
@@ -23,7 +25,7 @@ const player = (id: PlayerId, pos: Position): Actor => ({
 
 /** Состояние с игроками в явно заданных позициях. */
 function stateWith(positions: Record<PlayerId, Position>): GameState {
-  const base = createGameState(room, []);
+  const base = createGameState(room, [], SEED);
   const actors = Object.fromEntries(
     Object.entries(positions).map(([id, pos]) => [id, player(id, pos)]),
   );
@@ -171,18 +173,18 @@ describe('simultaneous move conflicts', () => {
 
 describe('createGameState', () => {
   it('puts players on distinct floor tiles nearest to spawn', () => {
-    const state = createGameState(room, ['p1', 'p2', 'p3']);
+    const state = createGameState(room, ['p1', 'p2', 'p3'], SEED);
     const positions = Object.values(state.actors).map((p) => `${p.pos.x},${p.pos.y}`);
     expect(positions[0]).toBe('1,1');
     expect(new Set(positions).size).toBe(3);
   });
 
   it('throws when the room is too small', () => {
-    expect(() => createGameState(parseRoom('#@#'), ['p1', 'p2'])).toThrow(/room for 1/);
+    expect(() => createGameState(parseRoom('#@#'), ['p1', 'p2'], SEED)).toThrow(/room for 1/);
   });
 
   it('creates players with full hp and no weapon, game in progress', () => {
-    const state = createGameState(room, ['p1']);
+    const state = createGameState(room, ['p1'], SEED);
     expect(state.actors['p1']).toEqual(player('p1', { x: 1, y: 1 }));
     expect(state.status).toBe('playing');
     expect(state.items).toEqual({});
@@ -194,7 +196,7 @@ describe('createGameState', () => {
       monsters: [{ species: 'skull', pos: { x: 1, y: 1 } }],
       items: [{ type: 'bone', pos: { x: 4, y: 1 } }],
     };
-    const state = createGameState(withMonster, ['p1']);
+    const state = createGameState(withMonster, ['p1'], SEED);
     expect(state.actors['monster-1']).toEqual({
       kind: 'monster',
       id: 'monster-1',
@@ -205,11 +207,26 @@ describe('createGameState', () => {
       weapon: null,
     });
     expect(state.actors['p1']?.pos).not.toEqual({ x: 1, y: 1 });
-    expect(state.items).toEqual({ 'item-1': { id: 'item-1', type: 'bone', pos: { x: 4, y: 1 } } });
+    expect(state.items).toEqual({ 'item-2': { id: 'item-2', type: 'bone', pos: { x: 4, y: 1 } } });
+    expect(state.nextId).toBe(3);
+  });
+
+  it('stores the seeded rng; the same room and seed give the same state', () => {
+    expect(createGameState(room, ['p1'], 7).rng).toBe(7);
+    expect(createGameState(room, ['p1', 'p2'], 7)).toEqual(createGameState(room, ['p1', 'p2'], 7));
+  });
+
+  it('survives a JSON round trip (state can be sent over the network as is)', () => {
+    const state = createGameState(
+      { ...room, monsters: [{ species: 'vampire', pos: { x: 4, y: 1 } }] },
+      ['p1', 'p2'],
+      SEED,
+    );
+    expect(JSON.parse(JSON.stringify(state))).toEqual(state);
   });
 
   it('rejects duplicate player ids', () => {
-    expect(() => createGameState(room, ['p1', 'p1'])).toThrow(/Duplicate/);
+    expect(() => createGameState(room, ['p1', 'p1'], SEED)).toThrow(/Duplicate/);
   });
 });
 
@@ -251,6 +268,7 @@ describe('monsters in the turn', () => {
     const state = createGameState(
       { ...room, monsters: [{ species: 'skull', pos: { x: 2, y: 1 } }] },
       [],
+      SEED,
     );
     return { ...base, actors: { ...base.actors, ...state.actors } };
   };

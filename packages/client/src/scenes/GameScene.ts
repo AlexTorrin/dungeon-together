@@ -53,6 +53,14 @@ const HOT_SEAT: readonly LocalPlayer[] = [
 ];
 
 /**
+ * Seed для новой локальной игры. Случайность берётся здесь, в клиенте: shared детерминирован
+ * и получает seed готовым. В сетевой игре seed будет выбирать сервер.
+ */
+function randomSeed(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
+}
+
+/**
  * Игровая сцена. Ходы одновременные: каждый локальный игрок выбирает действие,
  * сцена отправляет его в session и ждёт. Когда выбрали все, session возвращает события
  * разрешённого хода — их анимации проигрываются одновременно, и только потом
@@ -80,6 +88,7 @@ export class GameScene extends Phaser.Scene {
       createGameState(
         data.room,
         this.localPlayers.map((p) => p.id),
+        randomSeed(),
       ),
     );
     this.keys = new Map();

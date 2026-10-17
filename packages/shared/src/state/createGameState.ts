@@ -1,6 +1,8 @@
 import { MONSTERS, PLAYER_MAX_HP } from '../config/actors';
 import { DIRECTIONS, step } from '../direction';
 import { isWalkable } from '../map/gameMap';
+import { seedRng } from '../rng';
+import { allocateId } from './ids';
 import type {
   Actor,
   ActorId,
@@ -39,12 +41,19 @@ function nearestFreeFloor(room: Room, occupied: ReadonlySet<string>, count: numb
 /**
  * Начальное состояние: монстры и предметы — там, где их поставил редактор,
  * игроки — на старте и ближайших к нему свободных клетках.
- * id монстров и предметов — порядковые (`monster-1`, `item-1`), поэтому детерминированы.
+ * id монстров и предметов выдаёт счётчик nextId (`monster-1`, `item-2`, …), поэтому
+ * одинаковая комната и seed всегда дают одинаковое состояние.
  */
-export function createGameState(room: Room, playerIds: readonly PlayerId[]): GameState {
+export function createGameState(
+  room: Room,
+  playerIds: readonly PlayerId[],
+  seed: number,
+): GameState {
+  let nextId = 1;
   const actors: Record<ActorId, Actor> = {};
-  room.monsters.forEach(({ species, pos }, i) => {
-    const id = `monster-${i + 1}`;
+  room.monsters.forEach(({ species, pos }) => {
+    let id: ActorId;
+    [id, nextId] = allocateId(nextId, 'monster');
     const { maxHp } = MONSTERS[species];
     actors[id] = { kind: 'monster', id, species, pos, hp: maxHp, maxHp, weapon: null };
   });
@@ -62,10 +71,20 @@ export function createGameState(room: Room, playerIds: readonly PlayerId[]): Gam
   });
 
   const items: Record<ItemId, GroundItem> = {};
-  room.items.forEach(({ type, pos }, i) => {
-    const id = `item-${i + 1}`;
+  room.items.forEach(({ type, pos }) => {
+    let id: ItemId;
+    [id, nextId] = allocateId(nextId, 'item');
     items[id] = { id, type, pos };
   });
 
-  return { map: room.map, actors, items, turn: 1, pendingActions: {}, status: 'playing' };
+  return {
+    map: room.map,
+    actors,
+    items,
+    turn: 1,
+    pendingActions: {},
+    status: 'playing',
+    rng: seedRng(seed),
+    nextId,
+  };
 }
