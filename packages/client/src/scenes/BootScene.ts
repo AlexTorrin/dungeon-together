@@ -13,8 +13,14 @@ export class BootScene extends Phaser.Scene {
     const sheet = { frameWidth: TILE_SIZE, frameHeight: TILE_SIZE };
     this.load.spritesheet(TEXTURES.tileset, ASSET_PATHS.tileset, sheet);
     this.load.spritesheet(TEXTURES.characters, ASSET_PATHS.characters, sheet);
-    this.load.image(ASSET_PATHS.arrowItem, ASSET_PATHS.arrowItem);
-    this.load.image(ASSET_PATHS.knifeItem, ASSET_PATHS.knifeItem);
+    for (const path of [
+      ASSET_PATHS.knifeItem,
+      ASSET_PATHS.bowItem,
+      ASSET_PATHS.swordItem,
+      ASSET_PATHS.wandItem,
+    ]) {
+      this.load.image(path, path);
+    }
     this.load.image(TEXTURES.walls, ASSET_PATHS.walls);
 
     for (const anim of Object.values(ANIMATIONS)) {

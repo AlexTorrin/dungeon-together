@@ -6,7 +6,7 @@ import { makeState, monsterAt, playerAt } from '../testing';
 import type { Action, GameState, Plan, PlayerId } from '../types';
 import { applyCommand } from './applyCommand';
 import { chooseMonsterPlan } from './monsterAi';
-import { expectedPositions, isPlanValid, planPhases } from './plan';
+import { isPlanValid, simulatePlan, type PlanSimulation } from './plan';
 
 const ARENA = `
 ############
@@ -33,18 +33,20 @@ const wait: Action = { type: 'wait' };
 const hit = (x: number, y: number): Action => ({ type: 'attack', target: { x, y } });
 
 describe('plan helpers', () => {
+  const { map } = makeState(ARENA, []);
+  const at = (sim: PlanSimulation | null): unknown => sim?.before.map((a) => a.pos);
+
   it('pads a short plan with waiting and rejects plans over the action points', () => {
-    expect(planPhases([right])).toEqual([right, wait]);
-    expect(planPhases([right, left, wait])).toBeNull();
+    expect(simulatePlan(map, playerAt('p1', 1, 1), [right])?.phases).toEqual([right, wait]);
+    expect(simulatePlan(map, playerAt('p1', 1, 1), [right, left, wait])).toBeNull();
   });
 
   it('expects positions after own successful steps, stops at walls', () => {
-    const { map } = makeState(ARENA, []);
-    expect(expectedPositions(map, { x: 1, y: 1 }, [right, right])).toEqual([
+    expect(at(simulatePlan(map, playerAt('p1', 1, 1), [right, right]))).toEqual([
       { x: 1, y: 1 },
       { x: 2, y: 1 },
     ]);
-    expect(expectedPositions(map, { x: 1, y: 1 }, [left, right])).toEqual([
+    expect(at(simulatePlan(map, playerAt('p1', 1, 1), [left, right]))).toEqual([
       { x: 1, y: 1 },
       { x: 1, y: 1 }, // слева стена — остаётся на месте
     ]);

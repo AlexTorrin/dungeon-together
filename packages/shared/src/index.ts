@@ -59,4 +59,5 @@ export { chance, nextFloat, nextInt, seedRng, type RngState } from './rng';
 export { applyCommand } from './rules/applyCommand';
 export { MAX_PLAYER_ID_LENGTH, parseAction, parseCommand, parsePlan } from './parseCommand';
 export { ACTION_POINTS, actionCost } from './config/turn';
-export { expectedPositions, isPlanValid, planPhases } from './rules/plan';
+export { isPlanValid, simulatePlan, type PlanSimulation } from './rules/plan';
+export { BACKPACK_SIZE } from './config/inventory';

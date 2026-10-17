@@ -7,19 +7,18 @@
 
 ## Что используется сейчас
 
-| Файл                                               | Как используется                                                                                   |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `character and tileset/Dungeon_Tileset.png`        | тайлсет карты, 10×10 кадров (индекс = `row * 10 + col`)                                            |
-| `character and tileset/Dungeon_Character_2.png`    | спрайт-лист персонажей 7×2; кадры 2–3 — игрок 2 («в шляпе»)                                        |
-| `Character_animation/priests_idle/priest1/v1/*`    | игрок 1 (рыцарь), idle 4 кадра                                                                     |
-| `Character_animation/priests_idle/priest2/v1/*`    | чужой игрок (не за этой клавиатурой), idle 4 кадра                                                 |
-| `Character_animation/monsters_idle/skeleton1/v1/*` | монстр `skeleton`                                                                                  |
-| `Character_animation/monsters_idle/skull/v1/*`     | монстр `skull`                                                                                     |
-| `Character_animation/monsters_idle/vampire/v1/*`   | монстр `vampire`                                                                                   |
-| `custom/knife.png`                                 | оружие ближнего боя на полу (нож) — **свой спрайт**, см. ниже                                      |
-| `custom/walls.png`                                 | **все стены карты** — атлас под каждое сочетание соседей, собран из кусков тайлсета пака, см. ниже |
-| `items and trap_animation/arrow/Just_arrow.png`    | оружие дальнего боя на полу (стрела)                                                               |
-| `items and trap_animation/torch/torch_*`           | факелы на стенах, 4 кадра                                                                          |
+| Файл                                                   | Как используется                                                                                   |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `character and tileset/Dungeon_Tileset.png`            | тайлсет карты, 10×10 кадров (индекс = `row * 10 + col`)                                            |
+| `character and tileset/Dungeon_Character_2.png`        | спрайт-лист персонажей 7×2; кадры 2–3 — игрок 2 («в шляпе»)                                        |
+| `Character_animation/priests_idle/priest1/v1/*`        | игрок 1 (рыцарь), idle 4 кадра                                                                     |
+| `Character_animation/priests_idle/priest2/v1/*`        | чужой игрок (не за этой клавиатурой), idle 4 кадра                                                 |
+| `Character_animation/monsters_idle/skeleton1/v1/*`     | монстр `skeleton`                                                                                  |
+| `Character_animation/monsters_idle/skull/v1/*`         | монстр `skull`                                                                                     |
+| `Character_animation/monsters_idle/vampire/v1/*`       | монстр `vampire`                                                                                   |
+| `custom/knife.png`, `bow.png`, `sword.png`, `wand.png` | оружие на полу: нож, лук, меч, палочка — **свои спрайты**, см. ниже                                |
+| `custom/walls.png`                                     | **все стены карты** — атлас под каждое сочетание соседей, собран из кусков тайлсета пака, см. ниже |
+| `items and trap_animation/torch/torch_*`               | факелы на стенах, 4 кадра                                                                          |
 
 Ключи и пути — в `packages/client/src/assetKeys.ts`, какой актор как выглядит — в
 `packages/client/src/render/actorLooks.ts`.
@@ -89,7 +88,7 @@
 ASCII-сеткой 16×16 прямо в скрипте, цвета — таблицей, обводку добавляет `renderSprite`.
 
 ```bash
-node tools/sprites/knife.mjs              # пересобрать assets/custom/knife.png
+node tools/sprites/knife.mjs              # пересобрать assets/custom/knife.png (так же bow, sword, wand)
 node tools/sprites/knife.mjs preview.png  # заодно превью ×10 на плитке пола
 ```
 
@@ -127,3 +126,6 @@ node tools/sprites/walls.mjs   # пересобрать assets/custom/walls.png
 | Файл        | Что                       | Палитра                                                                                                              |
 | ----------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `knife.png` | нож — оружие ближнего боя | клинок `#adc1cf`/`#90919e` и гарда `#90919e` — как металл у рыцарей; рукоять `#895a45`/`#bf704d`, навершие `#373737` |
+| `bow.png`   | лук                       | дуга `#895a45`/`#bf704d`, рукоять `#373737`, тетива `#adc1cf`                                                        |
+| `sword.png` | меч                       | клинок `#adc1cf`/`#90919e`, гарда `#bf704d`, рукоять `#895a45`, навершие `#373737`                                   |
+| `wand.png`  | волшебная палочка         | древко `#895a45`/`#bf704d`, камень `#cf686d`/`#bc4c51` с бликом `#adc1cf` — красный как у стрел пака                 |

@@ -17,8 +17,8 @@ export type Direction =
   'up' | 'down' | 'left' | 'right' | 'upLeft' | 'upRight' | 'downLeft' | 'downRight';
 
 export type MonsterSpecies = 'skeleton' | 'skull' | 'vampire';
-/** Ближнее оружие бьёт соседнюю клетку, дальнее — любую в радиусе (см. config/weapons.ts). */
-export type WeaponType = 'melee' | 'ranged';
+/** Оружие (характеристики — config/weapons.ts): нож и меч бьют соседнюю клетку, лук и палочка — издалека. */
+export type WeaponType = 'knife' | 'bow' | 'sword' | 'wand';
 
 /** Расстановка в комнате (то, что рисует редактор); id появляются только в GameState. */
 export interface RoomMonster {
@@ -61,6 +61,8 @@ interface ActorBase {
   readonly maxHp: number;
   /** Одно оружие в руках или ничего (тогда бьёт кулаками). */
   readonly weapon: Item | null;
+  /** Рюкзак: до BACKPACK_SIZE предметов (config/inventory.ts). Подобранное попадает сюда. */
+  readonly backpack: readonly Item[];
 }
 
 export interface PlayerActor extends ActorBase {
@@ -82,7 +84,11 @@ export type Actor = PlayerActor | MonsterActor;
 export type Action =
   | { readonly type: 'move'; readonly direction: Direction }
   | { readonly type: 'attack'; readonly target: Position }
-  | { readonly type: 'wait' };
+  | { readonly type: 'wait' }
+  /** Взять в руки предмет из рюкзака; то, что было в руках, уходит в рюкзак на его место. */
+  | { readonly type: 'equip'; readonly itemId: ItemId }
+  /** Выбросить предмет (из рук или рюкзака) на свою клетку — например, чтобы отдать союзнику. */
+  | { readonly type: 'drop'; readonly itemId: ItemId };
 
 /**
  * План на ход: до ACTION_POINTS действий по порядку фаз (config/turn.ts). Короткий план

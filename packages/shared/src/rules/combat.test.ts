@@ -33,7 +33,7 @@ describe('canAttack', () => {
   const state = makeState(ARENA, []);
 
   it('melee and fists reach the 8 neighbours, not further', () => {
-    for (const w of [null, weapon('w', 'melee')]) {
+    for (const w of [null, weapon('w', 'knife')]) {
       const p = playerAt('p', 2, 2, { weapon: w });
       expect(canAttack(state.map, p, { x: 3, y: 3 })).toBe(true);
       expect(canAttack(state.map, p, { x: 1, y: 1 })).toBe(true);
@@ -43,14 +43,14 @@ describe('canAttack', () => {
   });
 
   it('ranged reaches any cell within 4 (diagonals included) in line of sight', () => {
-    const p = playerAt('p', 1, 1, { weapon: weapon('w', 'ranged') });
+    const p = playerAt('p', 1, 1, { weapon: weapon('w', 'bow') });
     expect(canAttack(state.map, p, { x: 5, y: 1 })).toBe(true);
     expect(canAttack(state.map, p, { x: 5, y: 5 })).toBe(true);
     expect(canAttack(state.map, p, { x: 6, y: 1 })).toBe(false);
   });
 
   it('walls block line of sight; own tile and walls are not targets', () => {
-    const p = playerAt('p', 3, 3, { weapon: weapon('w', 'ranged') });
+    const p = playerAt('p', 3, 3, { weapon: weapon('w', 'bow') });
     expect(canAttack(state.map, p, { x: 7, y: 3 })).toBe(false); // за колонной (5,3)
     expect(canAttack(state.map, p, { x: 5, y: 3 })).toBe(false); // сама колонна
     expect(canAttack(state.map, p, { x: 3, y: 3 })).toBe(false);
@@ -88,8 +88,8 @@ describe('attacks hit tiles after movement', () => {
 
   it('uses weapon damage and stacks hits on the same tile', () => {
     const state = makeState(ARENA, [
-      playerAt('p1', 1, 1, { weapon: weapon('m', 'melee') }),
-      playerAt('p2', 5, 1, { weapon: weapon('r', 'ranged') }),
+      playerAt('p1', 1, 1, { weapon: weapon('m', 'knife') }),
+      playerAt('p2', 5, 1, { weapon: weapon('r', 'bow') }),
       playerAt('p3', 2, 1),
     ]);
     const { state: next } = turn(state, { p1: hit(2, 1), p2: hit(2, 1), p3: wait });
@@ -108,13 +108,19 @@ describe('attacks hit tiles after movement', () => {
 describe('death and items', () => {
   it('removes the dead and drops their weapon', () => {
     const state = makeState(ARENA, [
-      playerAt('p1', 1, 1, { weapon: weapon('m', 'melee') }),
-      playerAt('p2', 2, 1, { hp: 3, weapon: weapon('r', 'ranged') }),
+      playerAt('p1', 1, 1, { weapon: weapon('m', 'knife') }),
+      playerAt('p2', 2, 1, { hp: 3, weapon: weapon('r', 'bow') }),
     ]);
     const { state: next, events } = turn(state, { p1: hit(2, 1), p2: wait });
     expect(next.actors['p2']).toBeUndefined();
-    expect(next.items['r']).toEqual({ id: 'r', type: 'ranged', pos: { x: 2, y: 1 } });
+    expect(next.items['r']).toEqual({ id: 'r', type: 'bow', pos: { x: 2, y: 1 } });
     expect(events).toContainEqual({ type: 'died', actorId: 'p2', at: { x: 2, y: 1 } });
+    expect(events).toContainEqual({
+      type: 'itemDropped',
+      actorId: 'p2',
+      itemId: 'r',
+      at: { x: 2, y: 1 },
+    });
   });
 
   it('attacks are simultaneous: a dying attacker still deals damage', () => {
@@ -128,16 +134,23 @@ describe('death and items', () => {
     expect(events.at(-1)).toEqual({ type: 'gameOver', status: 'lost' });
   });
 
-  it('stepping onto an item picks it up and leaves the old weapon there', () => {
+  it('stepping onto items puts them into the backpack, hands stay as they were', () => {
     const state = makeState(
       ARENA,
-      [playerAt('p1', 1, 1, { weapon: weapon('old', 'melee') })],
-      [{ id: 'new', type: 'ranged', pos: { x: 2, y: 1 } }],
+      [playerAt('p1', 1, 1, { weapon: weapon('old', 'knife') })],
+      [
+        { id: 'a', type: 'bow', pos: { x: 2, y: 1 } },
+        { id: 'b', type: 'sword', pos: { x: 2, y: 1 } },
+      ],
     );
     const { state: next, events } = turn(state, { p1: { type: 'move', direction: 'right' } });
-    expect(next.actors['p1']?.weapon).toEqual({ id: 'new', type: 'ranged' });
-    expect(next.items).toEqual({ old: { id: 'old', type: 'melee', pos: { x: 2, y: 1 } } });
-    expect(events).toContainEqual({ type: 'itemPickedUp', actorId: 'p1', itemId: 'new' });
+    expect(next.actors['p1']?.weapon).toEqual({ id: 'old', type: 'knife' });
+    expect(next.actors['p1']?.backpack).toEqual([
+      { id: 'a', type: 'bow' },
+      { id: 'b', type: 'sword' },
+    ]);
+    expect(next.items).toEqual({});
+    expect(events).toContainEqual({ type: 'itemPickedUp', actorId: 'p1', itemId: 'a' });
   });
 });
 
@@ -177,7 +190,7 @@ describe('diagonal moves', () => {
 describe('game over', () => {
   it('is won when the last monster dies', () => {
     const state = makeState(ARENA, [
-      playerAt('p1', 1, 1, { weapon: weapon('m', 'melee') }),
+      playerAt('p1', 1, 1, { weapon: weapon('m', 'knife') }),
       monsterAt('m1', 'skull', 2, 1, { hp: 1 }),
     ]);
     const { state: next, events } = turn(state, { p1: hit(2, 1) });

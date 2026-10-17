@@ -22,6 +22,14 @@ describe('parseAction', () => {
       { type: 'attack', target: { x: 3, y: -1 } },
       { type: 'attack', target: { x: 3, y: -1 } },
     ],
+    [
+      { type: 'equip', itemId: 'item-3' },
+      { type: 'equip', itemId: 'item-3' },
+    ],
+    [
+      { type: 'drop', itemId: 'item-1' },
+      { type: 'drop', itemId: 'item-1' },
+    ],
   ])('accepts %j', (raw, expected) => {
     expect(parseAction(raw)).toEqual(expected);
   });
@@ -38,6 +46,9 @@ describe('parseAction', () => {
     ['unknown direction', { type: 'move', direction: 'sideways' }],
     ['direction of wrong type', { type: 'move', direction: 1 }],
     ['attack by direction', { type: 'attack', direction: 'left' }],
+    ['equip without item', { type: 'equip' }],
+    ['drop with empty item id', { type: 'drop', itemId: '' }],
+    ['equip with numeric id', { type: 'equip', itemId: 7 }],
     ['attack without target', { type: 'attack' }],
     ['fractional target', { type: 'attack', target: { x: 1.5, y: 2 } }],
     ['string target coords', { type: 'attack', target: { x: '1', y: 2 } }],

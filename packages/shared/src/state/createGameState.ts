@@ -56,7 +56,16 @@ export function createGameState(
     let id: ActorId;
     [id, nextId] = allocateId(nextId, 'monster');
     const { maxHp } = MONSTERS[species];
-    actors[id] = { kind: 'monster', id, species, pos, hp: maxHp, maxHp, weapon: null };
+    actors[id] = {
+      kind: 'monster',
+      id,
+      species,
+      pos,
+      hp: maxHp,
+      maxHp,
+      weapon: null,
+      backpack: [],
+    };
   });
 
   const occupied = new Set(room.monsters.map(({ pos }) => key(pos)));
@@ -68,7 +77,15 @@ export function createGameState(
     const pos = positions[i];
     if (!pos) throw new Error(`No position for player ${id}`);
     if (Object.hasOwn(actors, id)) throw new Error(`Duplicate actor id ${id}`);
-    actors[id] = { kind: 'player', id, pos, hp: PLAYER_MAX_HP, maxHp: PLAYER_MAX_HP, weapon: null };
+    actors[id] = {
+      kind: 'player',
+      id,
+      pos,
+      hp: PLAYER_MAX_HP,
+      maxHp: PLAYER_MAX_HP,
+      weapon: null,
+      backpack: [],
+    };
   });
 
   const items: Record<ItemId, GroundItem> = {};

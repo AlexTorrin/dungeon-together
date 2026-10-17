@@ -16,8 +16,9 @@ import type {
 } from '../types';
 import type { CommandResult } from './applyCommand';
 import { canAttack, weaponOf } from './combat';
+import { BACKPACK_SIZE } from '../config/inventory';
 import { chooseMonsterPlan } from './monsterAi';
-import { planPhases } from './plan';
+import { simulatePlan, swapOut } from './plan';
 import { resolveMoves, type ActorIntent } from './resolveMoves';
 
 /** Изменяемый «черновик» состояния на время разрешения хода; в состояние уходят обычные объекты. */
@@ -45,7 +46,7 @@ export function resolveTurn(state: GameState): CommandResult {
     let plan: Plan;
     if (actor.kind === 'player') plan = state.pendingPlans[actor.id] ?? [];
     else [plan, rng] = chooseMonsterPlan(state, actor, rng);
-    phases.set(actor.id, planPhases(plan) ?? []);
+    phases.set(actor.id, [...(simulatePlan(state.map, actor, plan)?.phases ?? [])]);
   }
 
   // 2. Фазы
@@ -86,11 +87,12 @@ export function resolveTurn(state: GameState): CommandResult {
  * Одна фаза: все действуют одновременно.
  *
  * 1. Шаги — с конфликтами (resolveMoves).
- * 2. Подбор: кто шагнул на предмет, берёт его, а своё оружие кладёт на эту клетку.
+ * 2. Подбор: кто шагнул на клетку с предметами, кладёт их в рюкзак, пока есть место.
+ *    Взять в руки и выбросить (equip, drop) — тоже здесь, до ударов.
  * 3. Удары — по клеткам, где акторы стоят ПОСЛЕ шагов этой фазы. Отошёл — увернулся, шагнул под
  *    удар — получил. Удар, который с фактической позиции уже не достаёт (упёрся в стену, цель за
  *    углом), срывается и считается ожиданием. Урон применяется разом: убитый тоже успевает ударить.
- * 4. Смерти: hp ≤ 0 — актор удаляется, его оружие падает на пол.
+ * 4. Смерти: hp ≤ 0 — актор удаляется, всё, что нёс (руки и рюкзак), падает на пол.
  */
 function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
   const { actors, items, events } = turn;
@@ -130,23 +132,51 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
     } else if (action.type === 'attack' && canAttack(turn.map, actor, action.target)) {
       attacks.push({ id, target: action.target });
       events.push({ type: 'attacked', actorId: id, target: action.target });
-    } else {
+    } else if (action.type !== 'equip' && action.type !== 'drop') {
       events.push({ type: 'waited', actorId: id });
     }
   }
 
-  // 2. Подбор
+  // 2. Подбор: всё, что лежит на клетке и влезает в рюкзак
   for (const id of moved) {
-    const actor = actors.get(id);
-    const found = actor && [...items.values()].find((item) => samePos(item.pos, actor.pos));
-    if (!actor || !found) continue;
-    items.delete(found.id);
-    if (actor.weapon) {
-      items.set(actor.weapon.id, { ...actor.weapon, pos: actor.pos });
-      events.push({ type: 'itemDropped', itemId: actor.weapon.id, at: actor.pos });
+    let actor = actors.get(id);
+    if (!actor) continue;
+    for (const item of [...items.values()]) {
+      if (!samePos(item.pos, actor.pos) || actor.backpack.length >= BACKPACK_SIZE) continue;
+      items.delete(item.id);
+      actor = { ...actor, backpack: [...actor.backpack, { id: item.id, type: item.type }] };
+      events.push({ type: 'itemPickedUp', actorId: id, itemId: item.id });
     }
-    actors.set(id, { ...actor, weapon: { id: found.id, type: found.type } });
-    events.push({ type: 'itemPickedUp', actorId: id, itemId: found.id });
+    actors.set(id, actor);
+  }
+
+  //    Взять в руки, выбросить
+  for (const { id, action } of intents) {
+    const actor = actors.get(id);
+    if (!actor) continue;
+    if (action.type === 'equip') {
+      const item = actor.backpack.find((i) => i.id === action.itemId);
+      if (!item) continue; // проверено в плане; на всякий случай — просто ничего
+      actors.set(id, {
+        ...actor,
+        weapon: item,
+        backpack: swapOut(actor.backpack, item, actor.weapon),
+      });
+      events.push({ type: 'itemEquipped', actorId: id, itemId: item.id });
+    } else if (action.type === 'drop') {
+      const item =
+        actor.weapon?.id === action.itemId
+          ? actor.weapon
+          : actor.backpack.find((i) => i.id === action.itemId);
+      if (!item) continue;
+      actors.set(id, {
+        ...actor,
+        weapon: actor.weapon?.id === item.id ? null : actor.weapon,
+        backpack: actor.backpack.filter((i) => i.id !== item.id),
+      });
+      items.set(item.id, { ...item, pos: actor.pos });
+      events.push({ type: 'itemDropped', actorId: id, itemId: item.id, at: actor.pos });
+    }
   }
 
   // 3. Удары: урон по позициям после шагов, применяется разом
@@ -172,9 +202,9 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
     if (actor.hp > 0) continue;
     actors.delete(actor.id);
     events.push({ type: 'died', actorId: actor.id, at: actor.pos });
-    if (actor.weapon) {
-      items.set(actor.weapon.id, { ...actor.weapon, pos: actor.pos });
-      events.push({ type: 'itemDropped', itemId: actor.weapon.id, at: actor.pos });
+    for (const item of [...(actor.weapon ? [actor.weapon] : []), ...actor.backpack]) {
+      items.set(item.id, { ...item, pos: actor.pos });
+      events.push({ type: 'itemDropped', actorId: actor.id, itemId: item.id, at: actor.pos });
     }
   }
 }

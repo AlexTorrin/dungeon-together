@@ -33,7 +33,16 @@ export function parseAction(raw: unknown): Action | null {
     const target = parsePosition(field(raw, 'target'));
     return target ? { type, target } : null;
   }
+  if (type === 'equip' || type === 'drop') {
+    const itemId = field(raw, 'itemId');
+    return isId(itemId) ? { type, itemId } : null;
+  }
   return null;
+}
+
+/** Строковый id разумной длины. Есть ли такой предмет у игрока, решают правила. */
+function isId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= MAX_PLAYER_ID_LENGTH;
 }
 
 /** Клетка: целые x и y. Попадает ли она на карту, решают правила, а не парсер. */

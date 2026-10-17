@@ -54,9 +54,17 @@ export type GameEvent =
       readonly hp: number;
     }
   | { readonly type: 'died'; readonly actorId: ActorId; readonly at: Position }
-  /** Актор поднял предмет с пола (своё старое оружие, если было, кладёт на эту клетку). */
+  /** Актор поднял предмет с пола в рюкзак. */
   | { readonly type: 'itemPickedUp'; readonly actorId: ActorId; readonly itemId: ItemId }
-  | { readonly type: 'itemDropped'; readonly itemId: ItemId; readonly at: Position }
+  /** Актор взял предмет из рюкзака в руки. */
+  | { readonly type: 'itemEquipped'; readonly actorId: ActorId; readonly itemId: ItemId }
+  /** Предмет упал на пол: выбросил (drop) или выронил при смерти. */
+  | {
+      readonly type: 'itemDropped';
+      readonly actorId: ActorId;
+      readonly itemId: ItemId;
+      readonly at: Position;
+    }
   | { readonly type: 'gameOver'; readonly status: Exclude<GameStatus, 'playing'> }
   /** Фаза хода разрешена (1, 2, …): клиент проигрывает фазы по очереди. */
   | { readonly type: 'phaseResolved'; readonly phase: number }

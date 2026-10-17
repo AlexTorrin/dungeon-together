@@ -1,5 +1,6 @@
 import { AGGRO_RADIUS, AI_AIM_AT_CURRENT_CHANCE, ITEM_SEARCH_RADIUS } from '../config/ai';
-import { ACTION_POINTS } from '../config/turn';
+import { ACTION_POINTS, actionCost } from '../config/turn';
+import { WEAPONS } from '../config/weapons';
 import { VIEW_RADIUS } from '../config/vision';
 import { DIRECTIONS, directionTo, step } from '../direction';
 import { visibleFrom } from '../map/fov';
@@ -8,6 +9,7 @@ import { findPath, canStep } from '../map/pathfinding';
 import { chance, nextInt, type RngState } from '../rng';
 import type { Action, Actor, GameState, MonsterActor, Plan, Position } from '../types';
 import { canAttack } from './combat';
+import { swapOut } from './plan';
 
 interface Goal<T> {
   readonly target: T;
@@ -60,31 +62,45 @@ function aimAt(
 /**
  * ИИ монстра. Видит только состояние на начало хода — выбор игроков в этом ходу ему
  * неизвестен, так что бот, как и игрок, угадывает. Правила для него те же, что для игроков:
- * замечает игроков и предметы, только если видит их (то же поле зрения, что у игроков).
+ * замечает игроков и предметы, только если видит их (то же поле зрения, что у игроков),
+ * удар стоит столько же ОД (меч — 2). apLeft — сколько ОД осталось в этом ходу.
  *
- * 1. Игрок в досягаемости удара → бьёт (туда, где тот стоит, или куда может отойти).
- * 2. Без оружия и предмет рядом → идёт за предметом.
- * 3. Игрок в радиусе агрессии → идёт к нему.
- * 4. Иначе ждёт.
+ * 1. Безоружный, а в рюкзаке есть оружие → берёт лучшее в руки.
+ * 2. Игрок в досягаемости и на удар хватает ОД → бьёт (туда, где тот стоит, или куда может отойти).
+ * 3. Безоружный с пустым рюкзаком и оружие рядом → идёт за ним.
+ * 4. Игрок в радиусе агрессии → идёт к нему.
+ * 5. Иначе ждёт.
  */
 export function chooseMonsterAction(
   state: GameState,
   monster: MonsterActor,
   rng: RngState,
+  apLeft: number = ACTION_POINTS,
 ): readonly [Action, RngState] {
+  if (!monster.weapon && monster.backpack.length > 0) {
+    const best = [...monster.backpack].sort(
+      (a, b) => WEAPONS[b.type].damage - WEAPONS[a.type].damage,
+    )[0];
+    if (best) return [{ type: 'equip', itemId: best.id }, rng];
+  }
+
   const sees = visibleFrom(state.map, monster.pos, VIEW_RADIUS);
   const players = Object.values(state.actors).filter(
     (a) => a.kind === 'player' && sees.has(posKey(a.pos)),
   );
 
-  const inReach = players.filter((p) => canAttack(state.map, monster, p.pos));
+  const attackCost = actionCost({ type: 'attack', target: monster.pos }, monster.weapon);
+  const inReach =
+    attackCost <= apLeft ? players.filter((p) => canAttack(state.map, monster, p.pos)) : [];
   const victim = nearest(state, monster.pos, inReach, (p) => p.pos, Number.POSITIVE_INFINITY);
   if (victim) {
     const [target, next] = aimAt(state, monster, victim.target, rng);
     return [{ type: 'attack', target }, next];
   }
+  // Игрок рядом, но на удар этим оружием ОД не хватает (замах мечом) — ждём следующего хода.
+  if (players.some((p) => canAttack(state.map, monster, p.pos))) return [{ type: 'wait' }, rng];
 
-  if (!monster.weapon) {
+  if (!monster.weapon && monster.backpack.length === 0) {
     const items = Object.values(state.items).filter((i) => sees.has(posKey(i.pos)));
     const item = nearest(state, monster.pos, items, (i) => i.pos, ITEM_SEARCH_RADIUS);
     if (item) return [stepAlong(monster.pos, item.path), rng];
@@ -97,9 +113,9 @@ export function chooseMonsterAction(
 }
 
 /**
- * План монстра на ход — по одному действию на фазу. Второе выбирается так, будто первое
- * удалось (шагнул — значит, уже на новой клетке); игроков бот считает стоящими на месте —
- * их выбор ему неизвестен, как и игрокам выбор бота.
+ * План монстра на ход: действия, пока хватает ОД. Следующее выбирается так, будто предыдущее
+ * удалось (шагнул — уже на новой клетке, взял оружие — оно в руках); игроков бот считает
+ * стоящими на месте — их выбор ему неизвестен, как и игрокам выбор бота.
  */
 export function chooseMonsterPlan(
   state: GameState,
@@ -109,13 +125,19 @@ export function chooseMonsterPlan(
   const plan: Action[] = [];
   let self = monster;
   let next = rng;
-  for (let phase = 0; phase < ACTION_POINTS; phase++) {
+  let apLeft = ACTION_POINTS;
+  while (apLeft > 0) {
     const view: GameState = { ...state, actors: { ...state.actors, [self.id]: self } };
     let action: Action;
-    [action, next] = chooseMonsterAction(view, self, next);
+    [action, next] = chooseMonsterAction(view, self, next, apLeft);
     plan.push(action);
+    apLeft -= actionCost(action, self.weapon);
     if (action.type === 'move' && canStep(state.map, self.pos, action.direction)) {
       self = { ...self, pos: step(self.pos, action.direction) };
+    } else if (action.type === 'equip') {
+      const item = self.backpack.find((i) => i.id === action.itemId);
+      if (item)
+        self = { ...self, weapon: item, backpack: swapOut(self.backpack, item, self.weapon) };
     }
   }
   return [plan, next];

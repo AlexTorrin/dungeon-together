@@ -27,7 +27,13 @@ const MONSTER_CHARS: Readonly<Record<MonsterSpecies, string>> = {
   skull: 'K',
   vampire: 'V',
 };
-const ITEM_CHARS: Readonly<Record<WeaponType, string>> = { melee: 'm', ranged: 'r' };
+/** m и r — исторически «ближнее»/«дальнее»: сохранённые комнаты остаются читаемыми. */
+const ITEM_CHARS: Readonly<Record<WeaponType, string>> = {
+  knife: 'm',
+  bow: 'r',
+  sword: 's',
+  wand: 'w',
+};
 
 const ENTITY_CHARS: ReadonlyMap<string, RoomEntity> = new Map<string, RoomEntity>([
   ...MONSTER_SPECIES.map((species): [string, RoomEntity] => [
@@ -39,7 +45,7 @@ const ENTITY_CHARS: ReadonlyMap<string, RoomEntity> = new Map<string, RoomEntity
 
 /**
  * ASCII-комната: как parseAsciiMap, плюс ровно один '@' — точка старта, и расстановка:
- * S — скелет, K — череп, V — вампир, m — ближнее оружие, r — дальнее. Под ними пол.
+ * S — скелет, K — череп, V — вампир; оружие: m — нож, r — лук, s — меч, w — палочка. Под ними пол.
  */
 export function parseRoom(ascii: string): Room {
   const rows = ascii.split('\n').filter((row) => row.trim().length > 0);

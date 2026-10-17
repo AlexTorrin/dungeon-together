@@ -21,6 +21,7 @@ const player = (id: PlayerId, pos: Position): Actor => ({
   hp: PLAYER_MAX_HP,
   maxHp: PLAYER_MAX_HP,
   weapon: null,
+  backpack: [],
 });
 
 /** Состояние с игроками в явно заданных позициях. */
@@ -204,7 +205,7 @@ describe('createGameState', () => {
     const withMonster: Room = {
       ...room,
       monsters: [{ species: 'skull', pos: { x: 1, y: 1 } }],
-      items: [{ type: 'melee', pos: { x: 4, y: 1 } }],
+      items: [{ type: 'knife', pos: { x: 4, y: 1 } }],
     };
     const state = createGameState(withMonster, ['p1'], SEED);
     expect(state.actors['monster-1']).toEqual({
@@ -215,9 +216,10 @@ describe('createGameState', () => {
       hp: 3,
       maxHp: 3,
       weapon: null,
+      backpack: [],
     });
     expect(state.actors['p1']?.pos).not.toEqual({ x: 1, y: 1 });
-    expect(state.items).toEqual({ 'item-2': { id: 'item-2', type: 'melee', pos: { x: 4, y: 1 } } });
+    expect(state.items).toEqual({ 'item-2': { id: 'item-2', type: 'knife', pos: { x: 4, y: 1 } } });
     expect(state.nextId).toBe(3);
   });
 

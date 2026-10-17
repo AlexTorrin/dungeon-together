@@ -1,14 +1,21 @@
-import type { Action } from '../types';
+import type { Action, Item } from '../types';
+import { UNARMED, WEAPONS } from './weapons';
 
 /** Очков действия на ход. Ход делится на столько же фаз: одно ОД — одна фаза. */
 export const ACTION_POINTS = 2;
 
-/** Сколько ОД стоит действие. Пока всё по 1; тяжёлые удары (меч, шаг 6) будут стоить 2. */
-export function actionCost(action: Action): number {
+/**
+ * Сколько ОД стоит действие при оружии weapon в руках: удар — по оружию (меч — 2),
+ * всё остальное — 1.
+ */
+export function actionCost(action: Action, weapon: Item | null): number {
   switch (action.type) {
-    case 'move':
     case 'attack':
+      return weapon ? WEAPONS[weapon.type].cost : UNARMED.cost;
+    case 'move':
     case 'wait':
+    case 'equip':
+    case 'drop':
       return 1;
   }
 }

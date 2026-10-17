@@ -50,14 +50,24 @@ const TOOLS: readonly { tool: Tool; label: string; key: string }[] = [
     key: 'SIX',
   },
   {
-    tool: { kind: 'entity', entity: { kind: 'item', type: 'melee' } },
-    label: '7 Ближнее',
+    tool: { kind: 'entity', entity: { kind: 'item', type: 'knife' } },
+    label: '7 Нож',
     key: 'SEVEN',
   },
   {
-    tool: { kind: 'entity', entity: { kind: 'item', type: 'ranged' } },
-    label: '8 Дальнее',
+    tool: { kind: 'entity', entity: { kind: 'item', type: 'bow' } },
+    label: '8 Лук',
     key: 'EIGHT',
+  },
+  {
+    tool: { kind: 'entity', entity: { kind: 'item', type: 'sword' } },
+    label: '9 Меч',
+    key: 'NINE',
+  },
+  {
+    tool: { kind: 'entity', entity: { kind: 'item', type: 'wand' } },
+    label: '0 Палочка',
+    key: 'ZERO',
   },
 ];
 
@@ -167,7 +177,7 @@ export class RoomEditorScene extends Phaser.Scene {
     ui.text(
       12,
       TOOLBAR_HEIGHT + 6,
-      'ЛКМ — рисовать · ПКМ — стена · 1–8 — инструмент (Пол стирает монстров и предметы) · ' +
+      'ЛКМ — рисовать · ПКМ — стена · 1–0 — инструмент (Пол стирает монстров и предметы) · ' +
         'T — тест · Esc — меню',
       UI_COLORS.muted,
     );

@@ -30,6 +30,7 @@ export function playerAt(
     hp: PLAYER_MAX_HP,
     maxHp: PLAYER_MAX_HP,
     weapon: null,
+    backpack: [],
     ...extra,
   };
 }
@@ -42,7 +43,17 @@ export function monsterAt(
   extra: Partial<MonsterActor> = {},
 ): MonsterActor {
   const { maxHp } = MONSTERS[species];
-  return { kind: 'monster', id, species, pos: { x, y }, hp: maxHp, maxHp, weapon: null, ...extra };
+  return {
+    kind: 'monster',
+    id,
+    species,
+    pos: { x, y },
+    hp: maxHp,
+    maxHp,
+    weapon: null,
+    backpack: [],
+    ...extra,
+  };
 }
 
 /** Состояние из ASCII-карты (с '@') и явного списка акторов и предметов на полу. */

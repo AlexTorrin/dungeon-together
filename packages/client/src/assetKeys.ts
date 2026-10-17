@@ -10,9 +10,11 @@ export const TEXTURES = {
 export const ASSET_PATHS = {
   tileset: 'character and tileset/Dungeon_Tileset.png',
   characters: 'character and tileset/Dungeon_Character_2.png',
-  arrowItem: 'items and trap_animation/arrow/Just_arrow.png',
-  /** Нарисован для проекта — в паке ножа нет (см. docs/assets.md). */
+  /** Оружие нарисовано для проекта — в паке его нет (tools/sprites, docs/assets.md). */
   knifeItem: 'custom/knife.png',
+  bowItem: 'custom/bow.png',
+  swordItem: 'custom/sword.png',
+  wandItem: 'custom/wand.png',
   /** Стены для всех сочетаний соседей, собраны из тайлсета пака (tools/sprites/walls.mjs). */
   walls: 'custom/walls.png',
 } as const;
@@ -99,8 +101,10 @@ export interface StaticLook {
   readonly frame?: number;
 }
 
-/** Предметы на полу: ближнее — нож (свой спрайт), дальнее — стрела из пака. */
+/** Предметы на полу — свои спрайты (в паке оружия нет). */
 export const ITEM_LOOKS: Readonly<Record<WeaponType, StaticLook>> = {
-  melee: { texture: ASSET_PATHS.knifeItem },
-  ranged: { texture: ASSET_PATHS.arrowItem },
+  knife: { texture: ASSET_PATHS.knifeItem },
+  bow: { texture: ASSET_PATHS.bowItem },
+  sword: { texture: ASSET_PATHS.swordItem },
+  wand: { texture: ASSET_PATHS.wandItem },
 };
