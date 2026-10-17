@@ -20,8 +20,9 @@ packages/
   shared/   # вся игровая логика: состояние, правила, команды. Без зависимостей от Phaser/Colyseus/DOM
   server/   # (ещё не создан, шаг 6) Colyseus-комнаты: принимает команды, вызывает shared, рассылает состояние
   client/   # Phaser: рендер, ввод, UI, анимации. Никакой игровой логики
-assets/     # спрайты, тайлсеты (2D Pixel Dungeon Asset Pack v2.0), отдаются клиенту как статика
+assets/     # спрайты, тайлсеты (2D Pixel Dungeon Asset Pack v2.0), отдаются клиенту как статика; custom/ — свои
 docs/       # architecture.md — как всё устроено; assets.md — что лежит в assets/ и что где используется
+tools/sprites/  # скрипты, рисующие свои спрайты в assets/custom/ (ASCII-сетка → PNG)
 .claude/skills/run-game/  # запуск игры и скриншоты в headless-браузере для проверки изменений
 .claude/{agents,commands,rules/ecc,skills}/  # выборка из affaan-m/everything-claude-code @76aaa77, без хуков
 ```

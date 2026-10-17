@@ -72,6 +72,7 @@ packages/
 assets/      графика из 2D Pixel Dungeon Asset Pack v2.0 (не редактируем; описание — docs/assets.md)
   custom/    свои спрайты в стиле пака (нож)
 docs/        архитектура и заметки
+tools/       sprites/ — скрипты, которые рисуют свои спрайты (node tools/sprites/knife.mjs)
 .claude/     скил run-game для запуска и проверки игры агентом (Claude Code)
 ```
 
