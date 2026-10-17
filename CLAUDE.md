@@ -22,6 +22,7 @@ packages/
   client/   # Phaser: рендер, ввод, UI, анимации. Никакой игровой логики
 assets/     # спрайты, тайлсеты (2D Pixel Dungeon Asset Pack v2.0), отдаются клиенту как статика; custom/ — свои
 docs/       # architecture.md — как всё устроено; assets.md — что лежит в assets/ и что где используется
+deploy/     # ubuntu.sh — установка/обновление на сервере Ubuntu (systemd + nginx, сервер за `/server/`)
 tools/sprites/  # скрипты, рисующие свои спрайты в assets/custom/ (ASCII-сетка → PNG)
 .claude/skills/run-game/  # запуск игры и скриншоты в headless-браузере для проверки изменений
 .claude/{agents,commands,rules/ecc,skills}/  # выборка из affaan-m/everything-claude-code @76aaa77, без хуков

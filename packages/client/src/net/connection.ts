@@ -7,9 +7,14 @@ const DEFAULT_PORT = 2567;
 /**
  * Адрес сервера: VITE_SERVER_URL, а по умолчанию — тот же хост, с которого открыта игра. Так
  * друг в локальной сети, открывший http://<ваш-ip>:5173, подключится к серверу на вашей машине.
+ * Путь вида `/server` — сервер за тем же доменом (nginx проксирует его, см. deploy/ubuntu.sh):
+ * протокол и порт берутся у страницы, так что работает и по https, и через Cloudflare.
  */
 export function serverUrl(): string {
   const configured: unknown = import.meta.env['VITE_SERVER_URL'];
+  if (typeof configured === 'string' && configured.startsWith('/')) {
+    return `${location.origin}${configured.replace(/\/+$/, '')}`;
+  }
   if (typeof configured === 'string' && configured) return configured;
   return `${location.protocol}//${location.hostname}:${DEFAULT_PORT}`;
 }

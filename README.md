@@ -17,6 +17,21 @@ pnpm dev:server   # только сервер
 перезагрузки в меню будет «↩ Вернуться в игру». Друг в локальной сети открывает `http://<ваш-ip>:5173`: клиент ищет сервер на
 том же хосте (другой адрес — переменная `VITE_SERVER_URL`).
 
+## Запуск на сервере (Ubuntu)
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/AlexTorrin/dungeon-together/main/deploy/ubuntu.sh
+sudo bash ubuntu.sh
+```
+
+Скрипт [`deploy/ubuntu.sh`](deploy/ubuntu.sh) ставит Node.js 22, pnpm и nginx, клонирует репозиторий в
+`/opt/dungeon-togethere`, собирает клиент и запускает игровой сервер как systemd-сервис
+`dungeon-togethere`. Наружу смотрит только nginx на порту 80: он отдаёт клиент, а `/server/`
+(HTTP и WebSocket) проксирует серверу на 127.0.0.1:2567 — клиент собран с
+`VITE_SERVER_URL=/server`, поэтому работает через домен, Cloudflare и HTTPS. Профили
+игроков — в `/var/lib/dungeon-togethere/profiles.json`. Повторный запуск обновляет игру до свежего
+`main`; логи — `journalctl -u dungeon-togethere -f`.
+
 Проверки (должны быть зелёными после любых изменений):
 
 ```bash
