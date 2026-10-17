@@ -90,7 +90,7 @@ export function parseProfile(raw: unknown): Profile | null {
   return { coins, hands, backpack: backpackItems, chest: chestItems };
 }
 
-/** Токен игрока: 16–128 символов [A-Za-z0-9_-] (клиент делает его из crypto.randomUUID). */
+/** Токен игрока: 16–128 символов [A-Za-z0-9_-] (клиент делает его из crypto.getRandomValues). */
 export function parseToken(raw: unknown): string | null {
   return typeof raw === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(raw) ? raw : null;
 }

@@ -1,4 +1,5 @@
 import { parseRoom, serializeRoom, type Room } from '@dt/shared';
+import { randomId } from './randomId';
 
 const STORAGE_KEY = 'dt.rooms.v1';
 
@@ -49,7 +50,7 @@ export function loadRooms(): SavedRoom[] {
 /** Создаёт или перезаписывает комнату; возвращает её id. */
 export function saveRoom(id: string | null, name: string, room: Room): string {
   const rooms = readStored();
-  const entry: StoredRoom = { id: id ?? crypto.randomUUID(), name, ascii: serializeRoom(room) };
+  const entry: StoredRoom = { id: id ?? randomId(), name, ascii: serializeRoom(room) };
   const index = rooms.findIndex((r) => r.id === entry.id);
   if (index === -1) rooms.push(entry);
   else rooms[index] = entry;

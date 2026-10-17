@@ -1,4 +1,5 @@
 import { parseToken } from '@dt/shared';
+import { randomId } from './randomId';
 
 const STORAGE_KEY = 'dt.token.v1';
 /** Если localStorage недоступен — токен живёт до перезагрузки страницы. */
@@ -13,12 +14,12 @@ export function playerToken(): string {
   try {
     const stored = parseToken(localStorage.getItem(STORAGE_KEY));
     if (stored) return stored;
-    const token = crypto.randomUUID();
+    const token = randomId();
     localStorage.setItem(STORAGE_KEY, token);
     return token;
   } catch (error: unknown) {
     console.warn('localStorage недоступен — профиль будет новым после перезагрузки', error);
-    memoryToken ??= crypto.randomUUID();
+    memoryToken ??= randomId();
     return memoryToken;
   }
 }

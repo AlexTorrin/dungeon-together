@@ -133,6 +133,10 @@ server {
         proxy_read_timeout 1h;
         proxy_send_timeout 1h;
     }
+    # index.html всегда перепроверять: иначе после обновления браузер держит старый и грузит старый бандл
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
     # Собранные vite-файлы с хешем в имени можно кешировать надолго
     location /assets/ {
         expires 30d;
