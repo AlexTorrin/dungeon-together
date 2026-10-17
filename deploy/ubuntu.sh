@@ -41,17 +41,20 @@ log "Системные пакеты"
 apt-get update -q
 apt-get install -y -q ca-certificates curl git nginx
 
-if ! command -v node >/dev/null || [[ "$(node -p 'process.versions.node.split(".")[0]')" -lt "$NODE_MAJOR" ]]; then
+# Только системные /usr/bin/node и /usr/bin/pnpm: node или pnpm из nvm в /root сервису
+# (пользователь $APP_USER, ProtectHome) недоступны — systemd падает с 203/EXEC.
+NODE=/usr/bin/node
+PNPM=/usr/bin/pnpm
+if [[ ! -x $NODE ]] || [[ "$($NODE -p 'process.versions.node.split(".")[0]')" -lt "$NODE_MAJOR" ]]; then
   log "Node.js $NODE_MAJOR"
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
   apt-get install -y -q nodejs
 fi
 
-if [[ "$(pnpm --version 2>/dev/null || true)" != "$PNPM_VERSION" ]]; then
+if [[ "$($PNPM --version 2>/dev/null || true)" != "$PNPM_VERSION" ]]; then
   log "pnpm $PNPM_VERSION"
-  npm install -g "pnpm@$PNPM_VERSION"
+  /usr/bin/npm install -g --prefix /usr "pnpm@$PNPM_VERSION"
 fi
-PNPM="$(command -v pnpm)"
 
 if ! id "$APP_USER" >/dev/null 2>&1; then
   log "Пользователь $APP_USER"
@@ -87,7 +90,8 @@ Group=$APP_USER
 WorkingDirectory=$APP_DIR/packages/server
 Environment=PORT=$GAME_PORT
 Environment=DT_PROFILES_FILE=$DATA_DIR/profiles.json
-ExecStart=$PNPM start
+# То же, что pnpm start (tsx src/index.ts), но без pnpm: node сам подгружает tsx
+ExecStart=$NODE --import tsx src/index.ts
 Restart=always
 RestartSec=3
 # Сервису нужно писать только в каталог профилей
