@@ -5,16 +5,9 @@ import { MapView } from '../render/mapView';
 import { deleteRoom, loadRooms } from '../storage/roomStorage';
 import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
-import {
-  SCENES,
-  type EditorSceneData,
-  type GameSceneData,
-  type LocalPlayerCount,
-} from './sceneKeys';
+import { SCENES, type EditorSceneData, type GameSceneData } from './sceneKeys';
 
 const MAX_LISTED_ROOMS = 8;
-/** Ключ в game.registry — общих данных игры, переживающих перезапуск сцен. */
-const PLAYER_COUNT_KEY = 'menu.playerCount';
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -43,13 +36,7 @@ export class MenuScene extends Phaser.Scene {
     y += 64;
 
     const play = ui.add(new TextButton(this, 0, 0, '▶ Играть (демо)', () => this.play(DEMO_ROOM)));
-    const players = ui.add(
-      new TextButton(this, 0, 0, this.playerCountLabel(), () => {
-        this.registry.set(PLAYER_COUNT_KEY, this.playerCount() === 1 ? 2 : 1);
-        players.setText(this.playerCountLabel());
-      }),
-    );
-    layoutRow([play, players], left, y);
+    layoutRow([play], left, y);
     y += 44;
     const editor = ui.add(
       new TextButton(this, 0, 0, '✎ Редактор комнат', () => this.openEditor({})),
@@ -97,19 +84,11 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private play(room: Room): void {
-    const data: GameSceneData = { room, back: { to: 'menu' }, playerCount: this.playerCount() };
+    const data: GameSceneData = { room, back: { to: 'menu' } };
     this.scene.start(SCENES.game, data);
   }
 
   private openEditor(data: EditorSceneData): void {
     this.scene.start(SCENES.editor, data);
-  }
-
-  private playerCount(): LocalPlayerCount {
-    return this.registry.get(PLAYER_COUNT_KEY) === 2 ? 2 : 1;
-  }
-
-  private playerCountLabel(): string {
-    return this.playerCount() === 1 ? 'Игроков: 1' : 'Игроков: 2 (hot-seat)';
   }
 }

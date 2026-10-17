@@ -23,11 +23,7 @@ export interface EditorSceneData {
 export type GameReturn =
   { readonly to: 'menu' } | { readonly to: 'editor'; readonly draft: EditorDraft };
 
-/** 1 — обычная игра, 2 — hot-seat: два игрока за одной клавиатурой. */
-export type LocalPlayerCount = 1 | 2;
-
 export interface GameSceneData {
   readonly room: Room;
   readonly back: GameReturn;
-  readonly playerCount: LocalPlayerCount;
 }

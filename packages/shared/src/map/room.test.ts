@@ -5,8 +5,11 @@ import {
   isRoomPlayable,
   parseRoom,
   resizeRoom,
+  roomEntityAt,
   serializeRoom,
+  setRoomEntity,
   setRoomSpawn,
+  setRoomTile,
 } from './room';
 
 describe('parseRoom', () => {
@@ -30,6 +33,52 @@ describe('serializeRoom', () => {
   it('round-trips through parseRoom', () => {
     const ascii = ['#####', '#.@.#', '#...#', '#####'].join('\n');
     expect(serializeRoom(parseRoom(ascii))).toBe(ascii);
+  });
+
+  it('round-trips monsters and items', () => {
+    const ascii = ['#######', '#S@.mr#', '#K...V#', '#######'].join('\n');
+    const room = parseRoom(ascii);
+    expect(room.monsters).toEqual([
+      { species: 'skeleton', pos: { x: 1, y: 1 } },
+      { species: 'skull', pos: { x: 1, y: 2 } },
+      { species: 'vampire', pos: { x: 5, y: 2 } },
+    ]);
+    expect(room.items).toEqual([
+      { type: 'melee', pos: { x: 4, y: 1 } },
+      { type: 'ranged', pos: { x: 5, y: 1 } },
+    ]);
+    expect(getTile(room.map, { x: 1, y: 1 })).toBe('floor');
+    expect(serializeRoom(room)).toBe(ascii);
+  });
+});
+
+describe('setRoomEntity / setRoomTile', () => {
+  const room = createEmptyRoom(6, 5); // старт в (3,2)
+
+  it('places one thing per cell, replacing the previous one', () => {
+    let next = setRoomEntity(room, { x: 1, y: 1 }, { kind: 'item', type: 'ranged' });
+    next = setRoomEntity(next, { x: 1, y: 1 }, { kind: 'monster', species: 'vampire' });
+    expect(roomEntityAt(next, { x: 1, y: 1 })).toEqual({ kind: 'monster', species: 'vampire' });
+    expect(next.items).toEqual([]);
+  });
+
+  it('puts floor under a placed thing and never places on spawn', () => {
+    const onWall = setRoomEntity(room, { x: 0, y: 0 }, { kind: 'monster', species: 'skull' });
+    expect(getTile(onWall.map, { x: 0, y: 0 })).toBe('floor');
+    expect(setRoomEntity(room, room.spawn, { kind: 'item', type: 'melee' })).toBe(room);
+  });
+
+  it('a wall removes what stood in the cell; spawn stays floor', () => {
+    const placed = setRoomEntity(room, { x: 1, y: 1 }, { kind: 'monster', species: 'skull' });
+    const walled = setRoomTile(placed, { x: 1, y: 1 }, 'wall');
+    expect(walled.monsters).toEqual([]);
+    expect(getTile(walled.map, { x: 1, y: 1 })).toBe('wall');
+    expect(setRoomTile(room, room.spawn, 'wall')).toBe(room);
+  });
+
+  it('moving spawn onto a monster removes the monster', () => {
+    const placed = setRoomEntity(room, { x: 1, y: 1 }, { kind: 'monster', species: 'skull' });
+    expect(setRoomSpawn(placed, { x: 1, y: 1 }).monsters).toEqual([]);
   });
 });
 

@@ -7,6 +7,7 @@ export const TEXTURES = {
 export const ASSET_PATHS = {
   tileset: 'character and tileset/Dungeon_Tileset.png',
   characters: 'character and tileset/Dungeon_Character_2.png',
+  arrowItem: 'items and trap_animation/arrow/Just_arrow.png',
 } as const;
 
 export interface FrameAnimation {
@@ -84,3 +85,18 @@ export function firstFrame(anim: FrameAnimation): string {
   if (frame === undefined) throw new Error(`Animation '${anim.key}' has no frames`);
   return frame;
 }
+
+/** Неподвижная картинка: текстура и (для спрайт-листа) кадр. */
+export interface StaticLook {
+  readonly texture: string;
+  readonly frame?: number;
+}
+
+/**
+ * Предметы на полу. Готовых спрайтов оружия в паке нет: ближнее — кость из тайлсета
+ * (кадр 68), дальнее — стрела.
+ */
+export const ITEM_LOOKS = {
+  melee: { texture: TEXTURES.tileset, frame: 68 },
+  ranged: { texture: ASSET_PATHS.arrowItem },
+} as const satisfies Record<string, StaticLook>;

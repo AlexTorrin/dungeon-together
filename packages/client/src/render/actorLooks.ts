@@ -7,6 +7,11 @@ const MONSTER_LOOKS: Readonly<Record<MonsterSpecies, Look>> = {
   vampire: lookOf(ANIMATIONS.vampireIdle),
 };
 
+/** Как выглядит монстр данного вида (например, в редакторе, где актора ещё нет). */
+export function monsterLook(species: MonsterSpecies): Look {
+  return MONSTER_LOOKS[species];
+}
+
 const OTHER_PLAYER_LOOK = lookOf(ANIMATIONS.otherPlayerIdle);
 
 /**

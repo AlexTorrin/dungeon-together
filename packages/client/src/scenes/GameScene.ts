@@ -1,61 +1,67 @@
 import Phaser from 'phaser';
 import {
+  attackableCells,
+  canAttack,
   createGameState,
-  delta,
+  directionTo,
+  findPath,
+  isInBounds,
+  samePos,
   step,
+  weaponOf,
   type Action,
   type Actor,
-  type ActorId,
   type Direction,
   type GameEvent,
   type GameState,
   type PlayerId,
+  type Position,
 } from '@dt/shared';
-import { ANIMATIONS, SHEET_ANIMATIONS, lookOf, type Look } from '../assetKeys';
-import { BUMP_DURATION_MS, MOVE_DURATION_MS, TILE_SIZE, UI_COLORS, ZOOM } from '../config';
+import { ANIMATIONS, lookOf } from '../assetKeys';
+import { INTENT_COLORS, TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import type { GameSession } from '../game/GameSession';
 import { LocalGame } from '../game/LocalGame';
-import { lookOfActor } from '../render/actorLooks';
-import { MapView, tileCenter } from '../render/mapView';
+import { directionFromKeys } from '../input/keyDirection';
+import { ActorLayer } from '../render/ActorLayer';
+import { IntentLayer, type Intent } from '../render/IntentLayer';
+import { ItemLayer } from '../render/ItemLayer';
+import { MapView } from '../render/mapView';
+import { ActionPopup, type PopupOption } from '../ui/ActionPopup';
 import { UiOverlay } from '../ui/UiOverlay';
 import { SCENES, type GameReturn, type GameSceneData } from './sceneKeys';
 
-/** Смещение отметки «готов» от центра спрайта — в правый верхний угол клетки. */
-const MARK_OFFSET = { x: 5, y: -10 } as const;
-/** На сколько пикселей герой «дёргается» в сторону препятствия при неудачном шаге. */
-const BUMP_OFFSET = 4;
+/** Игрок за этим компьютером. В сетевой игре id выдаст сервер. */
+const LOCAL_ID: PlayerId = 'p1';
+const LOCAL_LOOK = lookOf(ANIMATIONS.heroIdle);
 
-type KeyCode = number;
 const K = Phaser.Input.Keyboard.KeyCodes;
-
-/** Игрок за этой клавиатурой: его id, клавиши и внешний вид. */
-interface LocalPlayer {
-  readonly id: PlayerId;
-  readonly name: string;
-  /** Пока только 4 прямых направления; диагонали и подтверждение — следующий шаг. */
-  readonly move: Readonly<Partial<Record<Direction, readonly KeyCode[]>>>;
-  readonly wait: readonly KeyCode[];
-  readonly look: Look;
-}
-
-const SOLO: LocalPlayer = {
-  id: 'p1',
-  name: 'Игрок 1',
-  move: { up: [K.W, K.UP], down: [K.S, K.DOWN], left: [K.A, K.LEFT], right: [K.D, K.RIGHT] },
+const KEYS = {
+  up: [K.W, K.UP],
+  down: [K.S, K.DOWN],
+  left: [K.A, K.LEFT],
+  right: [K.D, K.RIGHT],
   wait: [K.SPACE],
-  look: lookOf(ANIMATIONS.heroIdle),
+  confirm: [K.ENTER],
+  attack: [K.SHIFT],
+  back: [K.ESC],
+} as const;
+type KeyRole = keyof typeof KEYS;
+
+const ARROWS: Readonly<Record<Direction, string>> = {
+  up: '↑',
+  down: '↓',
+  left: '←',
+  right: '→',
+  upLeft: '↖',
+  upRight: '↗',
+  downLeft: '↙',
+  downRight: '↘',
 };
 
-const HOT_SEAT: readonly LocalPlayer[] = [
-  { ...SOLO, move: { up: [K.W], down: [K.S], left: [K.A], right: [K.D] } },
-  {
-    id: 'p2',
-    name: 'Игрок 2',
-    move: { up: [K.UP], down: [K.DOWN], left: [K.LEFT], right: [K.RIGHT] },
-    wait: [K.ENTER],
-    look: lookOf(SHEET_ANIMATIONS.ranger),
-  },
-];
+/** Высота панели подсказок и статуса сверху экрана. */
+const HUD_HEIGHT = 88;
+
+const WEAPON_NAMES = { none: 'кулаки', melee: 'ближнее', ranged: 'дальнее' } as const;
 
 /**
  * Seed для новой локальной игры. Случайность берётся здесь, в клиенте: shared детерминирован
@@ -65,29 +71,47 @@ function randomSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
 }
 
+function describe(action: Action): string {
+  switch (action.type) {
+    case 'move':
+      return `шаг ${ARROWS[action.direction]}`;
+    case 'attack':
+      return 'удар';
+    case 'wait':
+      return 'ждать';
+  }
+}
+
 /**
- * Игровая сцена. Ходы одновременные: каждый локальный игрок выбирает действие,
- * сцена отправляет его в session и ждёт. Когда выбрали все, по подписке приходят события
- * разрешённого хода — их анимации проигрываются одновременно, и только потом
- * принимается ввод на следующий ход.
+ * Игровая сцена. Ход локального игрока — в два этапа (паттерн «черновик → подтверждение»):
+ *
+ * 1. Выбор (draft): клавиши направления, Shift+направление (удар рядом), Пробел (ждать) или
+ *    клик мышью. Намерение сразу рисуется на карте полупрозрачным, выбор можно менять.
+ * 2. Подтверждение: Enter или пункт во всплывашке. Только тогда действие уходит в session,
+ *    стрелка становится сплошной и появляется ✓.
+ *
+ * Черновик — чисто клиентская вещь, shared о нём не знает. Цель мыши (goal) переживает ход:
+ * после разрешения следующий шаг к ней сам становится черновиком — остаётся подтвердить.
  */
 export class GameScene extends Phaser.Scene {
   private session!: GameSession;
   private ui!: UiOverlay;
   private back!: GameReturn;
-  private localPlayers: readonly LocalPlayer[] = [];
-  private keys = new Map<KeyCode, Phaser.Input.Keyboard.Key>();
-  private sprites = new Map<ActorId, Phaser.GameObjects.Sprite>();
-  private readyMarks = new Map<PlayerId, Phaser.GameObjects.Text>();
-  /**
-   * Кто из локальных игроков уже отправил действие в этом ходу. Хранится в сцене, а не
-   * берётся из state.pendingActions: по сети состояние догонит отправку с задержкой,
-   * и без этого флага игрок успел бы отправить действие несколько раз.
-   */
-  private submitted = new Set<PlayerId>();
+  private actors!: ActorLayer;
+  private items!: ItemLayer;
+  private intents!: IntentLayer;
+  private popup!: ActionPopup;
   private status!: Phaser.GameObjects.Text;
-  /** Сколько анимаций хода ещё идёт; пока > 0, ввод не принимается. */
-  private runningAnimations = 0;
+  private keys = new Map<number, Phaser.Input.Keyboard.Key>();
+
+  /** Выбрано, но не подтверждено. */
+  private draft: Action | null = null;
+  /** Подтверждено и отправлено в этом ходу (до turnResolved). */
+  private sent: Action | null = null;
+  /** Клетка, к которой идём мышью; шаги к ней выбираются сами, ход за ходом. */
+  private goal: Position | null = null;
+  private hover: Position | null = null;
+  private gameOver = false;
 
   constructor() {
     super(SCENES.game);
@@ -95,19 +119,13 @@ export class GameScene extends Phaser.Scene {
 
   init(data: GameSceneData): void {
     this.back = data.back;
-    this.localPlayers = data.playerCount === 2 ? HOT_SEAT : [SOLO];
-    this.session = new LocalGame(
-      createGameState(
-        data.room,
-        this.localPlayers.map((p) => p.id),
-        randomSeed(),
-      ),
-    );
+    this.session = new LocalGame(createGameState(data.room, [LOCAL_ID], randomSeed()));
     this.keys = new Map();
-    this.sprites = new Map();
-    this.readyMarks = new Map();
-    this.submitted = new Set();
-    this.runningAnimations = 0;
+    this.draft = null;
+    this.sent = null;
+    this.goal = null;
+    this.hover = null;
+    this.gameOver = false;
   }
 
   create(): void {
@@ -115,222 +133,353 @@ export class GameScene extends Phaser.Scene {
     this.ui = ui;
     const { state } = this.session;
     new MapView(this, state.map, (obj) => ui.world(obj));
-    this.syncActors(state);
+    this.items = new ItemLayer(this, ui);
+    this.intents = new IntentLayer(this, ui);
+    this.actors = new ActorLayer(this, ui, new Map([[LOCAL_ID, LOCAL_LOOK]]), () => this.onIdle());
+    this.popup = new ActionPopup(this, ui);
+    this.items.sync(state);
+    this.actors.sync(state);
 
     const { map } = state;
+    // Сверху запас на высоту HUD, чтобы верхний ряд карты можно было увидеть из-под панели.
+    const hud = HUD_HEIGHT / ZOOM;
     const camera = this.cameras.main
       .setZoom(ZOOM)
-      .setBounds(-TILE_SIZE, -TILE_SIZE, (map.width + 2) * TILE_SIZE, (map.height + 2) * TILE_SIZE);
-    const first = this.sprites.get(this.localPlayers[0]?.id ?? '');
-    if (first) camera.startFollow(first, true, 0.15, 0.15);
+      .setBounds(
+        -TILE_SIZE,
+        -TILE_SIZE - hud,
+        (map.width + 2) * TILE_SIZE,
+        (map.height + 2) * TILE_SIZE + hud,
+      );
+    const me = this.actors.spriteOf(LOCAL_ID);
+    if (me) camera.startFollow(me, true, 0.15, 0.15);
 
     const backLabel = this.back.to === 'editor' ? 'в редактор' : 'в меню';
-    const controls =
-      this.localPlayers.length === 1
-        ? 'WASD / стрелки — ход · Пробел — пропустить'
-        : 'И1: WASD, Пробел · И2: стрелки, Enter';
-    ui.text(12, 10, `${controls} · Esc — ${backLabel}`, UI_COLORS.muted);
-    this.status = ui.text(12, 30, '');
-    this.refreshStatus();
+    // Подложка под подсказки и статус, чтобы текст не терялся на фоне карты.
+    ui.add(this.add.rectangle(0, 0, 4096, HUD_HEIGHT, UI_COLORS.panel, 0.85).setOrigin(0));
+    ui.text(
+      12,
+      10,
+      'WASD/стрелки — шаг (две клавиши — по диагонали) · Shift+направление — удар рядом · ' +
+        'Пробел — ждать',
+      UI_COLORS.muted,
+    );
+    ui.text(
+      12,
+      28,
+      `Клик — идти/ударить · Enter — подтвердить · ПКМ/Esc — отмена · Esc — ${backLabel}`,
+      UI_COLORS.muted,
+    );
+    this.status = ui.text(12, 50, '');
 
-    this.registerKeys();
-    this.input.keyboard?.on('keydown-ESC', () => this.goBack());
-
+    this.registerInput();
     // События приходят асинхронно — в том числе после выхода из сцены, поэтому отписываемся.
-    const unsubscribe = this.session.subscribe((events, next) => {
-      this.handleEvents(events);
-      this.syncActors(next);
-    });
+    const unsubscribe = this.session.subscribe((events, next) => this.onEvents(events, next));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribe);
+    this.redraw();
   }
 
   override update(): void {
-    if (this.runningAnimations > 0) return;
-    for (const local of this.localPlayers) {
-      if (this.submitted.has(local.id)) continue; // уже выбрал — ждёт остальных
-      const action = this.readAction(local);
-      if (!action) continue;
-      this.submitted.add(local.id);
-      // Ответ придёт в handleEvents через подписку — не сразу, как и по сети.
-      this.session.send({ type: 'submitAction', playerId: local.id, action });
-    }
+    this.actors.followSprites();
   }
 
   // ---------- Ввод ----------
 
-  private registerKeys(): void {
+  private registerInput(): void {
     const kb = this.input.keyboard;
     if (!kb) throw new Error('Keyboard input unavailable');
-    for (const local of this.localPlayers) {
-      for (const code of [...Object.values(local.move).flat(), ...local.wait]) {
-        if (!this.keys.has(code)) this.keys.set(code, kb.addKey(code));
-      }
+    for (const codes of Object.values(KEYS)) {
+      for (const code of codes) if (!this.keys.has(code)) this.keys.set(code, kb.addKey(code));
     }
-  }
-
-  private isHeld(codes: readonly KeyCode[]): boolean {
-    return codes.some((code) => this.keys.get(code)?.isDown);
-  }
-
-  /** Нажата ли клавиша с прошлой проверки (одно нажатие = одно срабатывание). */
-  private wasPressed(codes: readonly KeyCode[]): boolean {
-    return codes.some((code) => {
-      const key = this.keys.get(code);
-      return key !== undefined && Phaser.Input.Keyboard.JustDown(key);
+    kb.on('keydown', (e: KeyboardEvent) => this.onKey(e.keyCode));
+    kb.on('keyup', (e: KeyboardEvent) => {
+      if (this.is('attack', e.keyCode)) this.redraw();
     });
-  }
 
-  private readAction(local: LocalPlayer): Action | null {
-    for (const [direction, codes] of Object.entries(local.move) as [Direction, KeyCode[]][]) {
-      if (this.isHeld(codes)) return { type: 'move', direction };
-    }
-    // Движение можно держать — его притормаживает анимация шага. У пропуска хода анимации нет,
-    // поэтому он срабатывает только на нажатие, иначе удержание пролистывало бы ход каждый кадр.
-    return this.wasPressed(local.wait) ? { type: 'wait' } : null;
-  }
-
-  // ---------- Акторы: сверка спрайтов с состоянием ----------
-
-  /**
-   * Сверяет спрайты с state.actors (reconciliation): новым акторам — спрайт, у пропавших —
-   * убрать. Пока идут анимации хода, только создаёт: удалять или двигать спрайт посреди tween
-   * нельзя (tween не завершится, и ввод заблокируется навсегда). Остальное — когда всё затихнет.
-   */
-  private syncActors(state: GameState): void {
-    for (const actor of Object.values(state.actors)) {
-      if (!this.sprites.has(actor.id)) this.addActor(actor);
-    }
-    if (this.runningAnimations > 0) return;
-
-    for (const [id, sprite] of this.sprites) {
-      const actor = state.actors[id];
-      if (!actor) {
-        sprite.destroy();
-        this.sprites.delete(id);
-        this.readyMarks.get(id)?.destroy();
-        this.readyMarks.delete(id);
-        continue;
-      }
-      // Страховка от рассинхрона: в покое спрайт стоит ровно в клетке из состояния.
-      const [x, y] = tileCenter(actor.pos);
-      sprite.setPosition(x, y);
-    }
-    this.syncMarks();
-  }
-
-  private addActor(actor: Actor): void {
-    const [x, y] = tileCenter(actor.pos);
-    const localLooks = new Map(this.localPlayers.map((p) => [p.id, p.look]));
-    const { texture, frame, anim } = lookOfActor(actor, localLooks);
-    this.sprites.set(actor.id, this.ui.world(this.add.sprite(x, y, texture, frame).play(anim)));
-    if (actor.kind !== 'player') return;
-
-    const mark = this.ui.world(
-      this.add
-        .text(x + MARK_OFFSET.x, y + MARK_OFFSET.y, '✓', {
-          fontFamily: 'monospace',
-          fontSize: '10px',
-          color: '#8fdc6a',
-        })
-        .setOrigin(0.5)
-        .setResolution(ZOOM)
-        .setDepth(1) // поверх всех персонажей, иначе соседний спрайт её закроет
-        .setVisible(false),
+    this.input.mouse?.disableContextMenu();
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      const tile = this.tileAt(p);
+      if (tile && this.hover && samePos(tile, this.hover)) return;
+      this.hover = tile;
+      this.redraw();
+    });
+    this.input.on(
+      'pointerdown',
+      (p: Phaser.Input.Pointer, over: readonly Phaser.GameObjects.GameObject[]) => {
+        if (over.length > 0) return; // клик по кнопке всплывашки — её обработает кнопка
+        if (p.rightButtonDown()) this.cancel();
+        else this.onTileClick(this.tileAt(p));
+      },
     );
-    this.readyMarks.set(actor.id, mark);
   }
 
-  // ---------- События → анимации ----------
+  private is(role: KeyRole, code: number): boolean {
+    return (KEYS[role] as readonly number[]).includes(code);
+  }
 
-  /** Превращает события логики в анимации. Сама логика уже применена в session, state свежий. */
-  private handleEvents(events: readonly GameEvent[]): void {
+  private held(role: KeyRole): boolean {
+    return KEYS[role].some((code) => this.keys.get(code)?.isDown);
+  }
+
+  private onKey(code: number): void {
+    if (this.is('back', code)) {
+      if (this.gameOver || (!this.popup.isOpen && !this.draft)) this.goBack();
+      else this.cancel();
+      return;
+    }
+    if (!this.canChoose()) return;
+
+    if (this.is('confirm', code)) {
+      this.confirm();
+    } else if (this.is('wait', code)) {
+      this.choose({ type: 'wait' }, null);
+    } else if (this.is('attack', code)) {
+      this.redraw(); // показать досягаемость
+    } else {
+      const direction = directionFromKeys({
+        up: this.held('up'),
+        down: this.held('down'),
+        left: this.held('left'),
+        right: this.held('right'),
+      });
+      if (direction) this.chooseDirection(direction);
+    }
+  }
+
+  private chooseDirection(direction: Direction): void {
+    const me = this.me();
+    if (!me) return;
+    if (!this.held('attack')) {
+      this.choose({ type: 'move', direction }, null);
+      return;
+    }
+    const target = step(me.pos, direction);
+    if (canAttack(this.session.state.map, me, target))
+      this.choose({ type: 'attack', target }, null);
+    else this.ui.toast('Туда не ударить');
+  }
+
+  private onTileClick(tile: Position | null): void {
+    const me = this.me();
+    if (!tile || !me || !this.canChoose()) return;
+    const { map } = this.session.state;
+    const options: PopupOption[] = [];
+    const offer = (label: string, action: Action, goal: Position | null): void => {
+      options.push({
+        label,
+        onPick: () => {
+          this.choose(action, goal);
+          this.confirm();
+        },
+        onHover: () => this.choose(action, goal),
+      });
+    };
+
+    if (samePos(tile, me.pos)) {
+      offer('Ждать', { type: 'wait' }, null);
+    } else {
+      // По клетке с кем-то первым предлагаем удар, по пустой — шаг.
+      const occupied = Object.values(this.session.state.actors).some((a) => samePos(a.pos, tile));
+      const attack = (): void => {
+        if (canAttack(map, me, tile)) offer('Ударить', { type: 'attack', target: tile }, null);
+      };
+      if (occupied) attack();
+      const path = findPath(map, me.pos, tile);
+      const first = path?.[0];
+      const direction = first ? directionTo(me.pos, first) : null;
+      if (path && direction) {
+        const turns = path.length > 1 ? ` (${path.length} ход.)` : '';
+        offer(`Идти${turns}`, { type: 'move', direction }, path.length > 1 ? tile : null);
+      }
+      if (!occupied) attack();
+    }
+    if (options.length === 0) {
+      this.ui.toast('Сюда не дойти и не ударить');
+      return;
+    }
+    options.push({ label: 'Отмена', onPick: () => this.cancel(), onHover: null });
+    options[0]?.onHover?.(); // сразу показать намерение первого пункта
+    this.popup.show(tile, options);
+  }
+
+  // ---------- Черновик и подтверждение ----------
+
+  private canChoose(): boolean {
+    return !this.gameOver && !this.sent && !this.actors.busy && this.me() !== undefined;
+  }
+
+  private choose(action: Action, goal: Position | null): void {
+    this.draft = action;
+    this.goal = goal;
+    this.redraw();
+  }
+
+  private cancel(): void {
+    this.popup.hide();
+    if (!this.sent) {
+      this.draft = null;
+      this.goal = null;
+    }
+    this.redraw();
+  }
+
+  private confirm(): void {
+    this.popup.hide();
+    if (!this.canChoose()) return;
+    if (!this.draft) {
+      this.ui.toast('Сначала выберите действие');
+      return;
+    }
+    this.sent = this.draft;
+    this.draft = null;
+    // Ответ придёт в onEvents через подписку — не сразу, как и по сети.
+    this.session.send({ type: 'submitAction', playerId: LOCAL_ID, action: this.sent });
+    this.redraw();
+  }
+
+  /** После хода: если идём к цели мышью — следующий шаг сам становится черновиком. */
+  private continueToGoal(): void {
+    const me = this.me();
+    if (!this.goal || !me || this.sent) return;
+    const path = samePos(me.pos, this.goal)
+      ? null
+      : findPath(this.session.state.map, me.pos, this.goal);
+    const first = path?.[0];
+    const direction = first ? directionTo(me.pos, first) : null;
+    if (direction) this.draft = { type: 'move', direction };
+    else this.goal = null;
+  }
+
+  // ---------- События ----------
+
+  private onEvents(events: readonly GameEvent[], next: GameState): void {
     for (const event of events) {
+      this.actors.play(event);
       switch (event.type) {
         case 'actionSubmitted':
-          this.readyMarks.get(event.playerId)?.setVisible(true);
+          this.actors.setReady(event.playerId, true);
           break;
-        case 'moved': {
-          const sprite = this.sprites.get(event.actorId);
-          if (!sprite) break;
-          this.face(sprite, event.direction);
-          const [x, y] = tileCenter(event.to);
-          this.animate({ targets: sprite, x, y, duration: MOVE_DURATION_MS });
+        case 'turnResolved':
+          this.actors.clearReady();
+          this.sent = null;
           break;
-        }
-        case 'bumped': {
-          const sprite = this.sprites.get(event.actorId);
-          if (!sprite) break;
-          this.face(sprite, event.direction);
-          const delta = step({ x: 0, y: 0 }, event.direction);
-          this.animate({
-            targets: sprite,
-            x: sprite.x + delta.x * BUMP_OFFSET,
-            y: sprite.y + delta.y * BUMP_OFFSET,
-            duration: BUMP_DURATION_MS / 2,
-            yoyo: true,
-          });
+        case 'gameOver':
+          this.showGameOver(event.status);
           break;
-        }
+        case 'moved':
+        case 'bumped':
         case 'waited':
-        case 'attacked': // анимаций ударов пока нет
+        case 'attacked':
         case 'damaged':
-        case 'died': // спрайт уберёт syncActors
+        case 'died':
         case 'itemPickedUp':
         case 'itemDropped':
-        case 'gameOver':
-          break;
+          break; // анимации — в ActorLayer, спрайты — сверкой
         default: {
           // Новый тип события без обработки — ошибка компиляции, а не молчаливый пропуск.
           const unhandled: never = event;
           throw new Error(`Unhandled event ${JSON.stringify(unhandled)}`);
         }
-        case 'turnResolved':
-          for (const mark of this.readyMarks.values()) mark.setVisible(false);
-          this.submitted.clear();
-          break;
       }
     }
+    this.actors.sync(next);
+    if (!this.actors.busy) this.onIdle();
+    else this.redraw();
+  }
+
+  /** Все анимации хода закончились. */
+  private onIdle(): void {
+    this.items.sync(this.session.state);
+    this.continueToGoal();
+    this.redraw();
+  }
+
+  private showGameOver(status: 'won' | 'lost'): void {
+    this.gameOver = true;
+    this.draft = null;
+    this.goal = null;
+    this.popup.hide();
+    const { width, height } = this.scale;
+    const title = status === 'won' ? 'Победа!' : 'Вы погибли';
+    this.ui.add(this.add.rectangle(0, 0, width, height, UI_COLORS.panel, 0.6).setOrigin(0));
+    this.ui
+      .add(
+        this.add.text(width / 2, height / 2 - 20, title, {
+          fontFamily: 'monospace',
+          fontSize: '40px',
+          color: UI_COLORS.text,
+        }),
+      )
+      .setOrigin(0.5);
+    this.ui.text(width / 2, height / 2 + 30, 'Esc — выйти', UI_COLORS.muted).setOrigin(0.5);
+  }
+
+  // ---------- Отрисовка ----------
+
+  private me(): Actor | undefined {
+    return this.session.state.actors[LOCAL_ID];
+  }
+
+  private tileAt(p: Phaser.Input.Pointer): Position | null {
+    const tile = { x: Math.floor(p.worldX / TILE_SIZE), y: Math.floor(p.worldY / TILE_SIZE) };
+    return isInBounds(this.session.state.map, tile) ? tile : null;
+  }
+
+  private redraw(): void {
+    const { state } = this.session;
+    const me = this.me();
+    const intents: Intent[] = [];
+
+    if (me) {
+      const action = this.sent ?? this.draft;
+      if (action) {
+        // Путь до цели мыши после этого шага — чтобы было видно, куда идём дальше.
+        const after = action.type === 'move' ? step(me.pos, action.direction) : null;
+        const rest = after && this.goal ? findPath(state.map, after, this.goal) : null;
+        intents.push({
+          from: me.pos,
+          action,
+          color: INTENT_COLORS.me,
+          confirmed: this.sent !== null,
+          ...(rest ? { path: rest } : {}),
+        });
+      }
+    }
+    // Подтверждённые действия других игроков видны всем (намерения монстров — нет).
+    for (const actor of Object.values(state.actors)) {
+      const action = state.pendingActions[actor.id];
+      if (actor.id === LOCAL_ID || actor.kind !== 'player' || !action) continue;
+      intents.push({ from: actor.pos, action, color: INTENT_COLORS.ally, confirmed: true });
+    }
+
+    const choosingAttack =
+      this.held('attack') || this.draft?.type === 'attack' || this.popup.isOpen;
+    const showReach = me && !this.sent && !this.gameOver && choosingAttack;
+    this.intents.draw({
+      intents,
+      hover: this.gameOver ? null : this.hover,
+      hoverAttackable: !!me && !!this.hover && canAttack(state.map, me, this.hover),
+      reach: showReach ? attackableCells(state.map, me) : [],
+    });
     this.refreshStatus();
   }
 
-  /** Запускает tween и учитывает его в runningAnimations, чтобы заблокировать ввод до конца хода. */
-  private animate(config: Phaser.Types.Tweens.TweenBuilderConfig): void {
-    this.runningAnimations++;
-    this.tweens.add({
-      ...config,
-      onUpdate: () => this.syncMarks(),
-      onComplete: () => {
-        this.runningAnimations--;
-        this.syncMarks();
-        // Последняя анимация хода закончилась — доделываем то, что сверка отложила.
-        if (this.runningAnimations === 0) this.syncActors(this.session.state);
-      },
-    });
-  }
-
-  private face(sprite: Phaser.GameObjects.Sprite, direction: Direction): void {
-    const { x } = delta(direction);
-    if (x < 0) sprite.setFlipX(true);
-    if (x > 0) sprite.setFlipX(false);
-  }
-
-  private syncMarks(): void {
-    for (const [id, mark] of this.readyMarks) {
-      const sprite = this.sprites.get(id);
-      if (sprite) mark.setPosition(sprite.x + MARK_OFFSET.x, sprite.y + MARK_OFFSET.y);
-    }
-  }
-
   private refreshStatus(): void {
-    const { turn, pendingActions } = this.session.state;
-    if (this.localPlayers.length === 1) {
+    const me = this.me();
+    const { turn } = this.session.state;
+    if (!me) {
       this.status.setText(`Ход ${turn}`);
       return;
     }
-    const players = this.localPlayers
-      .map((p) => `${p.name}: ${pendingActions[p.id] ? 'готов ✓' : 'выбирает…'}`)
-      .join(' · ');
-    this.status.setText(`Ход ${turn} · ${players}`);
+    const weapon = WEAPON_NAMES[me.weapon?.type ?? 'none'];
+    const { range, damage } = weaponOf(me);
+    const head = `Ход ${turn} · HP ${me.hp}/${me.maxHp} · Оружие: ${weapon} (урон ${damage}, дальность ${range})`;
+    const choice = this.sent
+      ? `Выбрано: ${describe(this.sent)} ✓ — ждём остальных`
+      : this.draft
+        ? `Выбрано: ${describe(this.draft)} — Enter, чтобы подтвердить`
+        : 'Выберите действие';
+    this.status.setText(`${head}\n${choice}`);
   }
 
   private goBack(): void {

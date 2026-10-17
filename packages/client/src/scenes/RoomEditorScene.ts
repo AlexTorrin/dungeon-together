@@ -4,12 +4,15 @@ import {
   isInBounds,
   resizeRoom,
   serializeRoom,
+  setRoomEntity,
   setRoomSpawn,
-  setTile,
+  setRoomTile,
   type Position,
   type Room,
+  type RoomEntity,
 } from '@dt/shared';
-import { ANIMATIONS, firstFrame } from '../assetKeys';
+import { ANIMATIONS, ITEM_LOOKS, firstFrame } from '../assetKeys';
+import { monsterLook } from '../render/actorLooks';
 import { EDITOR, TILE_SIZE, UI_COLORS } from '../config';
 import { MapView, tileCenter } from '../render/mapView';
 import { deleteRoom, saveRoom } from '../storage/roomStorage';
@@ -17,16 +20,49 @@ import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
 import { SCENES, type EditorDraft, type EditorSceneData, type GameSceneData } from './sceneKeys';
 
-type Tool = 'wall' | 'floor' | 'spawn';
+/** Инструмент: тайл, точка старта или монстр/предмет. «Пол» заодно стирает монстров и предметы. */
+type Tool =
+  | { readonly kind: 'wall' }
+  | { readonly kind: 'floor' }
+  | { readonly kind: 'spawn' }
+  | { readonly kind: 'entity'; readonly entity: RoomEntity };
+
+/** Им же рисует правая кнопка мыши. Один объект: кнопки инструментов сравниваются по ссылке. */
+const WALL: Tool = { kind: 'wall' };
 
 const TOOLS: readonly { tool: Tool; label: string; key: string }[] = [
-  { tool: 'wall', label: '1 Стена', key: 'ONE' },
-  { tool: 'floor', label: '2 Пол', key: 'TWO' },
-  { tool: 'spawn', label: '3 Старт', key: 'THREE' },
+  { tool: WALL, label: '1 Стена', key: 'ONE' },
+  { tool: { kind: 'floor' }, label: '2 Пол', key: 'TWO' },
+  { tool: { kind: 'spawn' }, label: '3 Старт', key: 'THREE' },
+  {
+    tool: { kind: 'entity', entity: { kind: 'monster', species: 'skeleton' } },
+    label: '4 Скелет',
+    key: 'FOUR',
+  },
+  {
+    tool: { kind: 'entity', entity: { kind: 'monster', species: 'skull' } },
+    label: '5 Череп',
+    key: 'FIVE',
+  },
+  {
+    tool: { kind: 'entity', entity: { kind: 'monster', species: 'vampire' } },
+    label: '6 Вампир',
+    key: 'SIX',
+  },
+  {
+    tool: { kind: 'entity', entity: { kind: 'item', type: 'melee' } },
+    label: '7 Ближнее',
+    key: 'SEVEN',
+  },
+  {
+    tool: { kind: 'entity', entity: { kind: 'item', type: 'ranged' } },
+    label: '8 Дальнее',
+    key: 'EIGHT',
+  },
 ];
 
 /** Высота панели инструментов сверху; клики по ней не рисуют на карте. */
-const TOOLBAR_HEIGHT = 92;
+const TOOLBAR_HEIGHT = 124;
 const MARGIN = 24;
 
 function newDraft(): EditorDraft {
@@ -46,10 +82,12 @@ const clampSize = (n: number): number => Phaser.Math.Clamp(n, EDITOR.minSize, ED
  */
 export class RoomEditorScene extends Phaser.Scene {
   private draft!: EditorDraft;
-  private tool: Tool = 'wall';
+  private tool: Tool = WALL;
   private mapView!: MapView;
   private grid!: Phaser.GameObjects.Graphics;
   private spawnMarker!: Phaser.GameObjects.Sprite;
+  /** Монстры и предметы комнаты; пересоздаются при каждом изменении (комнаты маленькие). */
+  private entitySprites: Phaser.GameObjects.GameObject[] = [];
   private ui!: UiOverlay;
   private toolButtons = new Map<Tool, TextButton>();
   private title!: Phaser.GameObjects.Text;
@@ -62,6 +100,7 @@ export class RoomEditorScene extends Phaser.Scene {
   init(data: EditorSceneData): void {
     this.draft = data.draft ?? newDraft();
     this.toolButtons = new Map();
+    this.entitySprites = [];
   }
 
   create(): void {
@@ -95,24 +134,25 @@ export class RoomEditorScene extends Phaser.Scene {
     const btn = (label: string, onClick: () => void): TextButton =>
       ui.add(new TextButton(this, 0, 0, label, onClick));
 
-    const x = layoutRow(tools, 12, 10) + 18;
-    layoutRow(
-      [
-        btn('Новая', () => this.scene.restart({})),
-        btn('Сохранить', () => this.save()),
-        btn('Удалить', () => this.remove()),
-        btn('ASCII', () => void this.copyAscii()),
-        btn('▶ Тест', () => this.test()),
-        btn('Меню', () => this.scene.start(SCENES.menu)),
-      ],
-      x,
-      10,
-    );
+    layoutRow(tools, 12, 10);
+    const x =
+      layoutRow(
+        [
+          btn('Новая', () => this.scene.restart({})),
+          btn('Сохранить', () => this.save()),
+          btn('Удалить', () => this.remove()),
+          btn('ASCII', () => void this.copyAscii()),
+          btn('▶ Тест', () => this.test()),
+          btn('Меню', () => this.scene.start(SCENES.menu)),
+        ],
+        12,
+        50,
+      ) + 18;
 
     this.sizeLabel = ui.text(0, 0, '');
     // Фиксированная ширина, чтобы название справа не прыгало при смене размера.
     this.sizeLabel.setPadding(0, 6, 0, 6).setFixedSize(64, 0);
-    const sizeEnd = layoutRow(
+    layoutRow(
       [
         btn('Ш−', () => this.resize(-1, 0)),
         btn('Ш+', () => this.resize(1, 0)),
@@ -120,16 +160,17 @@ export class RoomEditorScene extends Phaser.Scene {
         btn('В+', () => this.resize(0, 1)),
         this.sizeLabel,
       ],
-      12,
+      x,
       50,
     );
-    this.title = ui.text(sizeEnd + 18, 56, '');
+    this.title = ui.text(12, 96, '');
     ui.text(
       12,
-      0,
-      'ЛКМ — рисовать · ПКМ — стена · 1/2/3 — инструмент · T — тест · Esc — меню',
+      TOOLBAR_HEIGHT + 6,
+      'ЛКМ — рисовать · ПКМ — стена · 1–8 — инструмент (Пол стирает монстров и предметы) · ' +
+        'T — тест · Esc — меню',
       UI_COLORS.muted,
-    ).setY(TOOLBAR_HEIGHT + 6);
+    );
   }
 
   private bindInput(): void {
@@ -162,21 +203,20 @@ export class RoomEditorScene extends Phaser.Scene {
     const { room } = this.draft;
     if (!isInBounds(room.map, pos)) return;
 
-    const tool: Tool = pointer.rightButtonDown() ? 'wall' : this.tool;
+    const tool: Tool = pointer.rightButtonDown() ? WALL : this.tool;
     this.setRoom(this.applyTool(room, pos, tool));
   }
 
   private applyTool(room: Room, pos: Position, tool: Tool): Room {
-    switch (tool) {
+    switch (tool.kind) {
       case 'spawn':
         return setRoomSpawn(room, pos);
       case 'floor':
-        return { ...room, map: setTile(room.map, pos, 'floor') };
-      case 'wall': {
-        // Под точкой старта всегда должен быть пол — стену туда не ставим.
-        if (pos.x === room.spawn.x && pos.y === room.spawn.y) return room;
-        return { ...room, map: setTile(room.map, pos, 'wall') };
-      }
+        return setRoomTile(setRoomEntity(room, pos, null), pos, 'floor');
+      case 'wall':
+        return setRoomTile(room, pos, 'wall'); // на точку старта стену не ставит
+      case 'entity':
+        return setRoomEntity(room, pos, tool.entity);
     }
   }
 
@@ -237,7 +277,6 @@ export class RoomEditorScene extends Phaser.Scene {
     const data: GameSceneData = {
       room: this.draft.room,
       back: { to: 'editor', draft: this.draft },
-      playerCount: 1,
     };
     this.scene.start(SCENES.game, data);
   }
@@ -248,12 +287,28 @@ export class RoomEditorScene extends Phaser.Scene {
     const { room, name, dirty } = this.draft;
     this.mapView.setMap(room.map);
     this.spawnMarker.setPosition(...tileCenter(room.spawn));
+    this.drawEntities(room);
     this.selectTool(this.tool);
     this.sizeLabel.setText(`${room.map.width}×${room.map.height}`);
     this.title.setText(
       `${name}${dirty ? ' *' : ''}${this.draft.id === null ? ' (не сохранена)' : ''}`,
     );
     this.fitCamera();
+  }
+
+  private drawEntities(room: Room): void {
+    for (const sprite of this.entitySprites) sprite.destroy();
+    this.entitySprites = [
+      ...room.monsters.map(({ species, pos }) => {
+        const { texture, frame, anim } = monsterLook(species);
+        return this.ui.world(this.add.sprite(...tileCenter(pos), texture, frame).play(anim));
+      }),
+      ...room.items.map(({ type, pos }) => {
+        const look = ITEM_LOOKS[type];
+        const frame = 'frame' in look ? look.frame : undefined;
+        return this.ui.world(this.add.image(...tileCenter(pos), look.texture, frame));
+      }),
+    ];
   }
 
   /** Толщина линий задаётся в мировых единицах, поэтому делим на зум — на экране всегда 1px. */

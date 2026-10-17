@@ -5,6 +5,26 @@ export const BACKGROUND_COLOR = '#25131a';
 /** Сколько длится анимация шага героя; пока она идёт, следующая команда не отправляется. */
 export const MOVE_DURATION_MS = 130;
 export const BUMP_DURATION_MS = 90;
+/** Сколько всплывает цифра урона. */
+export const DAMAGE_FLOAT_MS = 600;
+
+/** Порядок отрисовки мира (depth): что поверх чего. */
+export const DEPTH = {
+  items: 0.1,
+  intents: 0.2,
+  actors: 0.5,
+  overlays: 1, // полоски HP, отметки «готов»
+  floaters: 2, // цифры урона
+} as const;
+
+/** Цвета намерений и подсветки (0xRRGGBB для Graphics). */
+export const INTENT_COLORS = {
+  me: 0xf4e3c1,
+  ally: 0x7ec8e3,
+  attack: 0xe0503a,
+  reach: 0xe0503a,
+  hover: 0xffffff,
+} as const;
 
 export const EDITOR = {
   defaultWidth: 16,

@@ -3,6 +3,8 @@
 // Шаги:
 //   ArrowRight / KeyD / Escape ...  — нажать клавишу
 //   hold:KeyD:600                    — держать клавишу N мс
+//   down:KeyW  up:KeyW               — зажать / отпустить (для сочетаний: down:KeyW KeyA up:KeyW)
+//   move:x,y                         — навести мышь (без клика)
 //   click:x,y   rclick:x,y           — клик ЛКМ/ПКМ в экранных координатах (вьюпорт 960×640)
 //   drag:x1,y1:x2,y2                 — провести зажатой ЛКМ
 //   clicktext:Текст                  — клик по центру надписи на канвасе (ищется через Phaser)
@@ -42,6 +44,11 @@ for (const raw of steps) {
     await page.keyboard.down(key);
     await page.waitForTimeout(ms);
     await page.keyboard.up(key);
+  } else if (cmd === 'down' || cmd === 'up') {
+    await page.keyboard[cmd](arg);
+  } else if (cmd === 'move') {
+    const [x, y] = xy(arg);
+    await page.mouse.move(x, y);
   } else if (cmd === 'click' || cmd === 'rclick') {
     const [x, y] = xy(arg);
     await page.mouse.click(x, y, { button: cmd === 'rclick' ? 'right' : 'left' });
