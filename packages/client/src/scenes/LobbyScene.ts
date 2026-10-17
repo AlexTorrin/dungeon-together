@@ -173,6 +173,9 @@ export class LobbyScene extends Phaser.Scene {
       this.ui.text(left, y, 'Входим в комнату…', UI_COLORS.muted);
       return;
     }
+    if (lobby.reconnecting) {
+      this.ui.text(left + 280, y, 'Связь пропала — переподключаемся…', UI_COLORS.text);
+    }
     this.ui.text(left, y, 'Код комнаты — скажите его друзьям:', UI_COLORS.muted);
     y += 22;
     this.ui.add(

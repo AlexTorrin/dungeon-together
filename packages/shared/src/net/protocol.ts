@@ -16,6 +16,11 @@ export const MAX_NAME_LENGTH = 16;
 /** Код комнаты: столько букв, без похожих друг на друга (O/0, I/1). */
 export const ROOM_CODE_LENGTH = 4;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+/**
+ * Сколько секунд сервер держит место отключившегося игрока. Пока ждёт — ход тоже ждёт его;
+ * не вернулся — игрок покидает уровень (leave).
+ */
+export const RECONNECT_SECONDS = 30;
 
 /** Опции при создании комнаты (хост). */
 export interface CreateOptions {
@@ -44,6 +49,8 @@ export interface ClientMessages {
   readonly start: null;
   /** Команда игре; playerId сервер подставит сам. */
   readonly command: DistributiveOmit<Command, 'playerId'>;
+  /** После переподключения: пришлите всё заново (lobby и, если игра идёт, sync). */
+  readonly resync: null;
 }
 
 /** Сообщения сервер → клиент. */
@@ -59,6 +66,10 @@ export interface ServerMessages {
   };
   /** Забег начался: начальное состояние. */
   readonly started: { readonly state: GameState; readonly title: string };
+  /** Ответ на resync: текущее состояние целиком (пропущенные события не повторяются). */
+  readonly sync: { readonly state: GameState; readonly title: string };
+  /** Игрок потерял связь (сервер ждёт его RECONNECT_SECONDS) или вернулся. */
+  readonly playerStatus: { readonly playerId: PlayerId; readonly online: boolean };
   /** Результат чьей-то команды: события и состояние, к которому они привели. */
   readonly events: { readonly events: readonly GameEvent[]; readonly state: GameState };
 }

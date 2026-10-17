@@ -24,6 +24,11 @@ export function joinRoom(code: string, options: JoinOptions): Promise<Room> {
   return client().joinById(code, options);
 }
 
+/** Вернуться в комнату после перезагрузки страницы (пока сервер держит место). */
+export function reconnectRoom(reconnectionToken: string): Promise<Room> {
+  return client().reconnect(reconnectionToken);
+}
+
 /** Понятный игроку текст ошибки подключения. */
 export function connectionError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);

@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import { Room, type Client } from '@colyseus/core';
 import {
   MAX_PLAYERS,
+  RECONNECT_SECONDS,
   applyCommand,
   createGameState,
   generateLevel,
@@ -46,6 +47,7 @@ export abstract class DungeonRoom extends Room {
   /** sessionId → место игрока. Порядок вставки — порядок входа (первый — хост). */
   private readonly seats = new Map<string, Seat>();
   private game: GameState | null = null;
+  private title = '';
   /** Токены участников забега (playerId → токен): ушедший из комнаты тоже мог вынести добычу. */
   private readonly runTokens = new Map<PlayerId, string>();
   /** Чья добыча уже возвращена в профиль. */
@@ -56,6 +58,7 @@ export abstract class DungeonRoom extends Room {
     this.roomId = await uniqueRoomCode();
     this.onMessage('start', (client) => this.start(client));
     this.onMessage('command', (client, message: unknown) => this.command(client, message));
+    this.onMessage('resync', (client) => this.resync(client));
   }
 
   override onJoin(client: Client, raw: unknown): void {
@@ -68,6 +71,26 @@ export abstract class DungeonRoom extends Room {
     }
     this.seats.set(client.sessionId, { playerId, ...options });
     this.sendLobby();
+  }
+
+  /**
+   * Связь оборвалась не по воле игрока (закрыл вкладку, пропала сеть): держим его место
+   * RECONNECT_SECONDS. Вернётся — onReconnect, тот же sessionId; нет — Colyseus вызовет onLeave.
+   */
+  override async onDrop(client: Client): Promise<void> {
+    const seat = this.seats.get(client.sessionId);
+    if (!seat) return;
+    this.broadcastTyped('playerStatus', { playerId: seat.playerId, online: false });
+    try {
+      await this.allowReconnection(client, RECONNECT_SECONDS);
+    } catch {
+      // не вернулся вовремя — дальше onLeave, там игрок и покинет уровень
+    }
+  }
+
+  override onReconnect(client: Client): void {
+    const seat = this.seats.get(client.sessionId);
+    if (seat) this.broadcastTyped('playerStatus', { playerId: seat.playerId, online: true });
   }
 
   override onLeave(client: Client): void {
@@ -99,8 +122,8 @@ export abstract class DungeonRoom extends Room {
       loadouts,
     );
     void this.lock();
-    const title = `Подземелье #${seed} · ${DIFFICULTY_TITLES[difficulty]}`;
-    this.broadcastTyped('started', { state: this.game, title });
+    this.title = `Подземелье #${seed} · ${DIFFICULTY_TITLES[difficulty]}`;
+    this.broadcastTyped('started', { state: this.game, title: this.title });
   }
 
   /** Команда от клиента: разбираем как недоверенные данные, playerId — тот, кто прислал. */
@@ -138,21 +161,30 @@ export abstract class DungeonRoom extends Room {
     return this.seats.keys().next().value;
   }
 
-  private sendLobby(): void {
-    const host = this.seats.get(this.hostSession() ?? '')?.playerId ?? '';
-    const players = [...this.seats.values()].map(({ playerId, name }) => ({ playerId, name }));
-    for (const client of this.clients) {
-      const you = this.seats.get(client.sessionId)?.playerId;
-      if (!you) continue;
-      const lobby: ServerMessages['lobby'] = {
-        code: this.roomId,
-        difficulty: this.options.difficulty,
-        players,
-        host,
-        you,
-      };
-      client.send('lobby', lobby);
+  /** Вернувшемуся — всё заново: кто в комнате и, если игра идёт, состояние целиком. */
+  private resync(client: Client): void {
+    this.sendLobbyTo(client);
+    if (this.game) {
+      const sync: ServerMessages['sync'] = { state: this.game, title: this.title };
+      client.send('sync', sync);
     }
+  }
+
+  private sendLobby(): void {
+    for (const client of this.clients) this.sendLobbyTo(client);
+  }
+
+  private sendLobbyTo(client: Client): void {
+    const you = this.seats.get(client.sessionId)?.playerId;
+    if (!you) return;
+    const lobby: ServerMessages['lobby'] = {
+      code: this.roomId,
+      difficulty: this.options.difficulty,
+      players: [...this.seats.values()].map(({ playerId, name }) => ({ playerId, name })),
+      host: this.seats.get(this.hostSession() ?? '')?.playerId ?? '',
+      you,
+    };
+    client.send('lobby', lobby);
   }
 
   /** Всем в комнате; тип сообщения и его содержимое сверяются с протоколом из shared. */

@@ -93,6 +93,7 @@ export {
   ROOM_CODE_LENGTH,
   PROFILE_ACTION_PATH,
   PROFILE_PATH,
+  RECONNECT_SECONDS,
   ROOM_NAME,
   parseCreateOptions,
   parseJoinOptions,

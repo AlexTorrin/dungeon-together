@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import {
+  RECONNECT_SECONDS,
   ACTION_POINTS,
   BACKPACK_SIZE,
   attackableCells,
@@ -37,6 +38,7 @@ import { INTENT_COLORS, TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import type { GameSession } from '../game/GameSession';
 import { LocalGame } from '../game/LocalGame';
 import type { NetworkGame } from '../game/NetworkGame';
+import { forgetRoom } from '../net/resume';
 import { randomSeed } from '../game/randomSeed';
 import { initialAim, moveAim, nextAimTarget } from '../input/aim';
 import { directionFromKeys } from '../input/keyDirection';
@@ -190,6 +192,8 @@ export class GameScene extends Phaser.Scene {
   private myId: PlayerId = LOCAL_ID;
   /** Имена других игроков (сетевая игра). */
   private playerNames: Readonly<Record<PlayerId, string>> = {};
+  /** Плашка «связь пропала» (сетевая игра). */
+  private offlineBanner: Phaser.GameObjects.Text | null = null;
   /** Сетевая сессия — чтобы выйти из комнаты при уходе со сцены. */
   private net: NetworkGame | null = null;
 
@@ -201,6 +205,7 @@ export class GameScene extends Phaser.Scene {
     this.back = data.back;
     this.title = data.title;
     this.abandonAskedAt = null;
+    this.offlineBanner = null;
     if ('net' in data) {
       this.isRun = true;
       this.myId = data.net.playerId;
@@ -292,10 +297,23 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribe);
     const net = this.net;
     if (net) {
-      // Связь оборвалась — сервер уже считает, что мы ушли: несённое потеряно.
+      // Связь оборвалась окончательно — сервер уже считает, что мы ушли: несённое потеряно.
       net.onDisconnect = () => this.showGameOver('lost', 'Связь с сервером потеряна');
+      net.onConnection = (online) => this.setOffline(!online);
+      net.onResync = (state) => this.resync(state);
+      net.onPlayerStatus = (playerId, online) => {
+        const name = this.names.get(playerId) ?? 'Игрок';
+        this.ui.toast(
+          online
+            ? `${name} вернулся`
+            : `${name} потерял связь — ждём до ${RECONNECT_SECONDS} с, потом он покинет уровень`,
+        );
+      };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
         net.onDisconnect = null;
+        net.onConnection = null;
+        net.onResync = null;
+        net.onPlayerStatus = null;
         net.leave();
       });
     }
@@ -764,6 +782,48 @@ export class GameScene extends Phaser.Scene {
    * Пришли события и новое состояние. Спрайты готовим к новому состоянию, не двигая (prepare),
    * а события проигрываем по фазам: следующая фаза — когда закончились анимации предыдущей.
    */
+  /** Связь пропала: показываем плашку; ходить можно, команды уйдут после переподключения. */
+  private setOffline(offline: boolean): void {
+    this.offlineBanner?.destroy();
+    this.offlineBanner = null;
+    if (!offline) return;
+    const { width } = this.scale;
+    this.offlineBanner = this.ui.add(
+      this.add
+        .text(width / 2, HUD_HEIGHT + 12, 'Связь пропала — переподключаемся…', {
+          fontFamily: 'monospace',
+          fontSize: '16px',
+          color: UI_COLORS.text,
+          backgroundColor: UI_COLORS.buttonSelected,
+          padding: { x: 10, y: 6 },
+        })
+        .setOrigin(0.5, 0),
+    );
+  }
+
+  /**
+   * Вернулись после обрыва: события, пришедшие без нас, уже не проиграть — просто встаём в
+   * присланное состояние: карта, дверь, туман, акторы, предметы, кто уже отправил план.
+   */
+  private resync(next: GameState): void {
+    this.batches = [];
+    this.rememberNames(next);
+    this.visible = teamVision(next);
+    this.mapView.setMap(next.map);
+    this.door.sync(next.door);
+    this.fog.draw(next, this.visible);
+    this.actors.sync(next, this.visible); // идут анимации — досверит onTurnPlayed
+    this.items.sync(next, this.visible);
+    this.actors.clearReady();
+    for (const id of Object.keys(next.pendingPlans)) this.actors.setReady(id, true);
+    // Наш план либо дошёл до сервера (он в pendingPlans), либо нет — тогда выбираем заново.
+    this.sent = Object.hasOwn(next.pendingPlans, this.myId)
+      ? (next.pendingPlans[this.myId] ?? null)
+      : null;
+    if (next.status !== 'playing') this.showGameOver(next.status);
+    this.redraw();
+  }
+
   private onEvents(events: readonly GameEvent[], next: GameState): void {
     this.rememberNames(next);
     this.visible = teamVision(next);
@@ -958,6 +1018,7 @@ export class GameScene extends Phaser.Scene {
   private showGameOver(status: 'won' | 'lost', reason?: string): void {
     if (this.gameOver) return;
     this.gameOver = true;
+    if (this.net) forgetRoom(); // возвращаться после перезагрузки уже некуда
     this.draft = [];
     this.goal = null;
     this.popup.hide();

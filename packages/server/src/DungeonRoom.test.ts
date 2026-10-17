@@ -86,6 +86,44 @@ describe('DungeonRoom', () => {
     await host.leave();
   });
 
+  it('обрыв связи: место держится, вернувшийся получает состояние целиком', async () => {
+    const host = await client().create(ROOM_NAME, { name: 'Аня', token: ANYA });
+    await next(host, 'lobby');
+    const guest = await client().joinById(host.roomId, { name: 'Боря', token: BORYA });
+    await next(guest, 'lobby');
+    const started = Promise.all([next(host, 'started'), next(guest, 'started')]);
+    host.send('start', null);
+    await started;
+
+    // Код 1000 — не «вышел по согласию» (это 4000): сервер считает это обрывом.
+    const offline = next(host, 'playerStatus');
+    const token = guest.reconnectionToken;
+    guest.connection.close(1000);
+    expect(await offline).toEqual({ playerId: 'p2', online: false });
+
+    // Пока его нет, ход ждёт и его тоже.
+    const hostPlan = next(host, 'events');
+    host.send('command', { type: 'submitPlan', plan: [{ type: 'wait' }] });
+    expect((await hostPlan).events.some((e) => e.type === 'turnResolved')).toBe(false);
+
+    const online = next(host, 'playerStatus');
+    const back = await client().reconnect(token);
+    expect(await online).toEqual({ playerId: 'p2', online: true });
+    const lobby = next(back, 'lobby');
+    const sync = next(back, 'sync');
+    back.send('resync', null);
+    expect((await lobby).you).toBe('p2');
+    const { state } = await sync;
+    expect(state.pendingPlans).toHaveProperty('p1');
+    expect(state.actors).toHaveProperty('p2');
+
+    const resolved = next(host, 'events');
+    back.send('command', { type: 'submitPlan', plan: [{ type: 'wait' }] });
+    expect((await resolved).events.some((e) => e.type === 'turnResolved')).toBe(true);
+    await back.leave();
+    await host.leave();
+  });
+
   it('после старта в комнату не войти, несуществующий код — ошибка', async () => {
     const host = await client().create(ROOM_NAME, { token: ANYA });
     const started = next(host, 'started');

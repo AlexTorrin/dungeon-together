@@ -1,8 +1,11 @@
 import Phaser from 'phaser';
-import { DEMO_ROOM, DIFFICULTY_LIST, type Room } from '@dt/shared';
+import { DEMO_ROOM, DIFFICULTY_LIST, RECONNECT_SECONDS, type Room } from '@dt/shared';
 import { TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import { MapView } from '../render/mapView';
+import { Lobby } from '../net/Lobby';
+import { connectionError, reconnectRoom } from '../net/connection';
 import { fetchProfile, profileErrorText } from '../net/profileApi';
+import { forgetRoom, rememberedRoom } from '../net/resume';
 import { deleteRoom, loadRooms } from '../storage/roomStorage';
 import { DIFFICULTY_NAMES, WEAPON_NAMES } from '../ui/names';
 import { TextButton, layoutRow } from '../ui/TextButton';
@@ -73,7 +76,17 @@ export class MenuScene extends Phaser.Scene {
     const online = ui.add(
       new TextButton(this, 0, 0, '⚔ Сетевая игра', () => this.scene.start(SCENES.lobby)),
     );
-    layoutRow([hub, online], left, y);
+    const resume = rememberedRoom();
+    const back = resume
+      ? [
+          ui.add(
+            new TextButton(this, 0, 0, `↩ Вернуться в игру ${resume.code}`, () =>
+              this.resume(resume.reconnectionToken, ui),
+            ),
+          ),
+        ]
+      : [];
+    layoutRow([hub, online, ...back], left, y);
     y += 66;
     ui.text(left, y - 22, 'Тренировка — без снаряжения, добыча не сохраняется:', UI_COLORS.muted);
     const editor = ui.add(
@@ -121,6 +134,25 @@ export class MenuScene extends Phaser.Scene {
     };
     this.scale.once('resize', onResize);
     this.events.once('shutdown', () => this.scale.off('resize', onResize));
+  }
+
+  /** После перезагрузки страницы — обратно в комнату, пока сервер держит место. */
+  private resume(reconnectionToken: string, ui: UiOverlay): void {
+    reconnectRoom(reconnectionToken)
+      .then((room) => {
+        const data: LobbySceneData = { lobby: new Lobby(room) };
+        this.scene.start(SCENES.lobby, data);
+      })
+      .catch((error: unknown) => {
+        console.warn('Вернуться не вышло', error);
+        forgetRoom();
+        ui.toast(
+          /not found|expired|invalid/i.test(String(error))
+            ? `Вернуться нельзя: место ждёт ${RECONNECT_SECONDS} с, или игра уже закончилась`
+            : connectionError(error),
+        );
+        this.time.delayedCall(2000, () => this.scene.restart());
+      });
   }
 
   /** Тренировка: уровень считается в браузере, профиль не трогается. */
