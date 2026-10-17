@@ -9,6 +9,7 @@ import type {
   ActorId,
   GameState,
   GroundItem,
+  Item,
   ItemId,
   PlayerId,
   Position,
@@ -52,9 +53,15 @@ export function createGameState(
 ): GameState {
   let nextId = 1;
   const actors: Record<ActorId, Actor> = {};
-  room.monsters.forEach(({ species, pos }) => {
+  for (const { species, pos, weapon, coins, key: hasKey } of room.monsters) {
     let id: ActorId;
     [id, nextId] = allocateId(nextId, 'monster');
+    let item: Item | null = null;
+    if (weapon) {
+      let itemId: ItemId;
+      [itemId, nextId] = allocateId(nextId, 'item');
+      item = { id: itemId, type: weapon };
+    }
     const { maxHp } = MONSTERS[species];
     actors[id] = {
       kind: 'monster',
@@ -63,10 +70,12 @@ export function createGameState(
       pos,
       hp: maxHp,
       maxHp,
-      weapon: null,
+      weapon: item,
       backpack: [],
+      coins,
+      keys: hasKey ? 1 : 0,
     };
-  });
+  }
 
   const occupied = new Set(room.monsters.map(({ pos }) => key(pos)));
   const positions = nearestFreeFloor(room, occupied, playerIds.length);
@@ -85,15 +94,17 @@ export function createGameState(
       maxHp: PLAYER_MAX_HP,
       weapon: null,
       backpack: [],
+      coins: 0,
+      keys: 0,
     };
   });
 
   const items: Record<ItemId, GroundItem> = {};
-  room.items.forEach(({ type, pos }) => {
+  for (const item of room.items) {
     let id: ItemId;
-    [id, nextId] = allocateId(nextId, 'item');
-    items[id] = { id, type, pos };
-  });
+    [id, nextId] = allocateId(nextId, item.kind === 'weapon' ? 'item' : item.kind);
+    items[id] = { ...item, id };
+  }
 
   const state: GameState = {
     map: room.map,
@@ -105,6 +116,8 @@ export function createGameState(
     rng: seedRng(seed),
     nextId,
     explored: room.map.tiles.map(() => false),
+    door: room.door ? { pos: room.door, open: false } : null,
+    escaped: {},
   };
   return { ...state, explored: withExplored(state) };
 }

@@ -16,6 +16,9 @@ export function actionCost(action: Action, weapon: Item | null): number {
     case 'wait':
     case 'equip':
     case 'drop':
+    case 'dropCoins':
+    case 'dropKey':
+    case 'openDoor':
       return 1;
   }
 }

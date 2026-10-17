@@ -11,6 +11,9 @@ export type {
   ItemId,
   MonsterActor,
   MonsterSpecies,
+  Carried,
+  Door,
+  Loot,
   Plan,
   PlayerActor,
   PlayerId,
@@ -38,6 +41,7 @@ export {
   parseRoom,
   resizeRoom,
   roomEntityAt,
+  setRoomDoor,
   setRoomEntity,
   setRoomTile,
   type RoomEntity,
@@ -59,5 +63,12 @@ export { chance, nextFloat, nextInt, seedRng, type RngState } from './rng';
 export { applyCommand } from './rules/applyCommand';
 export { MAX_PLAYER_ID_LENGTH, parseAction, parseCommand, parsePlan } from './parseCommand';
 export { ACTION_POINTS, actionCost } from './config/turn';
-export { isPlanValid, simulatePlan, type PlanSimulation } from './rules/plan';
+export {
+  canOpenDoor,
+  isPlanValid,
+  simulatePlan,
+  type PlanSimulation,
+  type World,
+} from './rules/plan';
+export { DIFFICULTIES, DIFFICULTY_LIST, type Difficulty } from './config/level';
 export { BACKPACK_SIZE } from './config/inventory';

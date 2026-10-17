@@ -33,6 +33,11 @@ export function parseAction(raw: unknown): Action | null {
     const target = parsePosition(field(raw, 'target'));
     return target ? { type, target } : null;
   }
+  if (type === 'dropKey' || type === 'openDoor') return { type };
+  if (type === 'dropCoins') {
+    const amount = field(raw, 'amount');
+    return isInteger(amount) && amount > 0 ? { type, amount } : null;
+  }
   if (type === 'equip' || type === 'drop') {
     const itemId = field(raw, 'itemId');
     return isId(itemId) ? { type, itemId } : null;

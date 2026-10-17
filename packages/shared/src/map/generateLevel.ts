@@ -1,17 +1,10 @@
 import { Map as RotMap, RNG as RotRng } from 'rot-js';
-import { MONSTER_SPECIES } from '../config/actors';
-import { LEVEL } from '../config/level';
+import { DIFFICULTIES, LEVEL, type Difficulty } from '../config/level';
 import { WEAPON_TYPES } from '../config/weapons';
-import { nextInt, seedRng, type RngState } from '../rng';
-import type {
-  MonsterSpecies,
-  Position,
-  Room,
-  RoomItem,
-  RoomMonster,
-  Tile,
-  WeaponType,
-} from '../types';
+import { chance, nextInt, seedRng, type RngState } from '../rng';
+import type { GameMap, MonsterSpecies, Position, Room, RoomItem, Tile, WeaponType } from '../types';
+import { getTile } from './gameMap';
+import { findPath } from './pathfinding';
 import { posKey } from './geometry';
 
 interface RoomRect {
@@ -65,12 +58,53 @@ function pick<T>(items: readonly T[], rng: RngState): readonly [T, RngState] {
 }
 
 /**
- * Случайный уровень: карта из rot.js, старт — в центре первой комнаты, монстры и оружие —
- * в остальных комнатах (в стартовой никого нет, чтобы не начинать бой с первого хода).
- * Одинаковый seed — одинаковый уровень.
+ * Где поставить дверь-выход: в верхнюю стену комнаты — снизу пол комнаты, сверху, слева и
+ * справа стена (дверь в сплошной стене, ведёт «наружу»). Комнаты перебираются от самой
+ * дальней от старта по пути — к выходу надо пройти через уровень. null — места не нашлось.
  */
-export function generateLevel(seed: number): Room {
+function placeDoor(
+  map: GameMap,
+  spawn: Position,
+  rooms: readonly RoomRect[],
+  rng: RngState,
+): readonly [Position | null, RngState] {
+  const isWall = (x: number, y: number): boolean => getTile(map, { x, y }) === 'wall';
+  const distance = (r: RoomRect): number =>
+    findPath(map, spawn, {
+      x: Math.floor((r.left + r.right) / 2),
+      y: Math.floor((r.top + r.bottom) / 2),
+    })?.length ?? -1;
+  const byDistance = [...rooms].sort((a, b) => distance(b) - distance(a));
+  for (const room of byDistance) {
+    const y = room.top - 1;
+    const candidates: Position[] = [];
+    for (let x = room.left + 1; x < room.right; x++) {
+      if (
+        isWall(x, y) &&
+        !isWall(x, y + 1) &&
+        isWall(x, y - 1) &&
+        isWall(x - 1, y) &&
+        isWall(x + 1, y)
+      ) {
+        candidates.push({ x, y });
+      }
+    }
+    if (candidates.length > 0) return pick(candidates, rng);
+  }
+  return [null, rng];
+}
+
+/**
+ * Случайный уровень заданной сложности (config/level.ts): карта из rot.js, старт — в центре
+ * первой комнаты; монстры, оружие и монеты — в остальных комнатах (в стартовой никого нет,
+ * чтобы не начинать бой с первого хода). Часть монстров вооружена, часть монет у монстров
+ * (выпадут при смерти), ключ от двери-выхода — у случайного монстра.
+ * Одинаковые seed и сложность — одинаковый уровень.
+ */
+export function generateLevel(seed: number, difficulty: Difficulty = 'medium'): Room {
+  const config = DIFFICULTIES[difficulty];
   const { tiles, rooms } = digMap(seed);
+  const map: GameMap = { width: LEVEL.width, height: LEVEL.height, tiles };
   const [first, ...others] = rooms;
   if (!first || others.length === 0) throw new Error(`Level ${seed}: too few rooms`);
 
@@ -96,18 +130,51 @@ export function generateLevel(seed: number): Room {
     throw new Error(`Level ${seed}: no free cell for a monster or item`);
   };
 
-  const monsters: RoomMonster[] = [];
-  for (let i = 0; i < LEVEL.monsters; i++) {
+  // Монстры; первые config.armed — с оружием.
+  const monsters: {
+    species: MonsterSpecies;
+    pos: Position;
+    weapon: WeaponType | null;
+    coins: number;
+    key: boolean;
+  }[] = [];
+  for (let i = 0; i < config.monsters; i++) {
     let species: MonsterSpecies;
-    [species, rng] = pick(MONSTER_SPECIES, rng);
-    monsters.push({ species, pos: place() });
+    [species, rng] = pick(config.species, rng);
+    let weapon: WeaponType | null = null;
+    if (i < config.armed && config.armedWith.length > 0)
+      [weapon, rng] = pick(config.armedWith, rng);
+    monsters.push({ species, pos: place(), weapon, coins: 0, key: false });
   }
+
+  // Оружие на полу.
   const items: RoomItem[] = [];
   for (let i = 0; i < LEVEL.items; i++) {
     let type: WeaponType;
     [type, rng] = pick(WEAPON_TYPES, rng);
-    items.push({ type, pos: place() });
+    items.push({ kind: 'weapon', type, pos: place() });
   }
 
-  return { map: { width: LEVEL.width, height: LEVEL.height, tiles }, spawn, monsters, items };
+  // Монеты: каждая — кучкой на полу или у случайного монстра (поровну шансов).
+  const [total, afterTotal] = nextInt(rng, config.coins[0], config.coins[1]);
+  rng = afterTotal;
+  for (let i = 0; i < total; i++) {
+    let onFloor: boolean;
+    [onFloor, rng] = chance(rng, 0.5);
+    let carrier: (typeof monsters)[number] | undefined;
+    if (!onFloor && monsters.length > 0) [carrier, rng] = pick(monsters, rng);
+    if (carrier) carrier.coins += 1;
+    else items.push({ kind: 'coins', amount: 1, pos: place() });
+  }
+
+  // Дверь-выход и ключ к ней.
+  const [door, afterDoor] = placeDoor(map, spawn, others, rng);
+  rng = afterDoor;
+  if (door && monsters.length > 0) {
+    let keeper: (typeof monsters)[number];
+    [keeper, rng] = pick(monsters, rng);
+    keeper.key = true;
+  }
+
+  return { map, spawn, monsters, items, door };
 }

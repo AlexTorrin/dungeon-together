@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GameEvent } from '../commands';
 import { findPath } from '../map/pathfinding';
 import { seedRng } from '../rng';
-import { makeState, monsterAt, playerAt } from '../testing';
+import { makeState, monsterAt, playerAt, weapon } from '../testing';
 import type { Action, GameState, Plan, PlayerId } from '../types';
 import { applyCommand } from './applyCommand';
 import { chooseMonsterPlan } from './monsterAi';
@@ -33,31 +33,31 @@ const wait: Action = { type: 'wait' };
 const hit = (x: number, y: number): Action => ({ type: 'attack', target: { x, y } });
 
 describe('plan helpers', () => {
-  const { map } = makeState(ARENA, []);
+  const world = makeState(ARENA, []);
   const at = (sim: PlanSimulation | null): unknown => sim?.before.map((a) => a.pos);
 
   it('pads a short plan with waiting and rejects plans over the action points', () => {
-    expect(simulatePlan(map, playerAt('p1', 1, 1), [right])?.phases).toEqual([right, wait]);
-    expect(simulatePlan(map, playerAt('p1', 1, 1), [right, left, wait])).toBeNull();
+    expect(simulatePlan(world, playerAt('p1', 1, 1), [right])?.phases).toEqual([right, wait]);
+    expect(simulatePlan(world, playerAt('p1', 1, 1), [right, left, wait])).toBeNull();
   });
 
   it('expects positions after own successful steps, stops at walls', () => {
-    expect(at(simulatePlan(map, playerAt('p1', 1, 1), [right, right]))).toEqual([
+    expect(at(simulatePlan(world, playerAt('p1', 1, 1), [right, right]))).toEqual([
       { x: 1, y: 1 },
       { x: 2, y: 1 },
     ]);
-    expect(at(simulatePlan(map, playerAt('p1', 1, 1), [left, right]))).toEqual([
+    expect(at(simulatePlan(world, playerAt('p1', 1, 1), [left, right]))).toEqual([
       { x: 1, y: 1 },
       { x: 1, y: 1 }, // слева стена — остаётся на месте
     ]);
   });
 
   it('checks a phase-2 attack from where the first step leads', () => {
-    const { map } = makeState(ARENA, []);
+    const world = makeState(ARENA, []);
     const p = playerAt('p1', 1, 1);
-    expect(isPlanValid(map, p, [right, hit(3, 1)])).toBe(true); // с (2,1) достаёт до (3,1)
-    expect(isPlanValid(map, p, [wait, hit(3, 1)])).toBe(false); // с (1,1) — нет
-    expect(isPlanValid(map, p, [])).toBe(false);
+    expect(isPlanValid(world, p, [right, hit(3, 1)])).toBe(true); // с (2,1) достаёт до (3,1)
+    expect(isPlanValid(world, p, [wait, hit(3, 1)])).toBe(false); // с (1,1) — нет
+    expect(isPlanValid(world, p, [])).toBe(false);
   });
 });
 
@@ -96,6 +96,22 @@ describe('two phases per turn', () => {
     expect(dodged.actors['p2']?.hp).toBe(10);
     const caught = turn(start(), { p1: [hit(2, 1), wait], p2: [wait, right] }).state;
     expect(caught.actors['p2']?.hp).toBe(9);
+  });
+
+  it('two blows at an empty tile: arriving in phase 1 takes both, arriving in phase 2 takes one', () => {
+    // Каждый удар бьёт по позициям после шагов СВОЕЙ фазы: пришёл позже первого удара — он мимо.
+    const start = (): GameState =>
+      makeState(ARENA, [
+        playerAt('p1', 1, 1, { weapon: weapon('k', 'knife') }),
+        playerAt('p2', 3, 1),
+      ]);
+    const twice = [hit(2, 1), hit(2, 1)];
+    const early = turn(start(), { p1: twice, p2: [left, wait] });
+    expect(early.state.actors['p2']?.hp).toBe(10 - 3 - 3);
+    expect(early.events.filter((e) => e.type === 'damaged')).toHaveLength(2);
+    const late = turn(start(), { p1: twice, p2: [wait, left] });
+    expect(late.state.actors['p2']?.hp).toBe(10 - 3);
+    expect(late.events.filter((e) => e.type === 'damaged')).toHaveLength(1);
   });
 
   it('killed in phase 1 does not act in phase 2', () => {

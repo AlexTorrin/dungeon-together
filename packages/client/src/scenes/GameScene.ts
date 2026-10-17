@@ -4,11 +4,13 @@ import {
   BACKPACK_SIZE,
   attackableCells,
   canAttack,
+  canOpenDoor,
   createGameState,
   isPlanValid,
   simulatePlan,
   WEAPONS,
   UNARMED,
+  type GroundItem,
   type Item,
   type PlanSimulation,
   directionTo,
@@ -22,6 +24,7 @@ import {
   type Plan,
   type PlanRejectReason,
   type Actor,
+  type ActorId,
   type Direction,
   type GameEvent,
   type GameMap,
@@ -37,6 +40,7 @@ import { randomSeed } from '../game/randomSeed';
 import { initialAim, moveAim, nextAimTarget } from '../input/aim';
 import { directionFromKeys } from '../input/keyDirection';
 import { ActorLayer } from '../render/ActorLayer';
+import { DoorView } from '../render/DoorView';
 import { FogLayer } from '../render/FogLayer';
 import { IntentLayer, type Intent } from '../render/IntentLayer';
 import { ItemLayer } from '../render/ItemLayer';
@@ -60,6 +64,7 @@ const KEYS = {
   undo: [K.BACKSPACE],
   slots: [K.ONE, K.TWO, K.THREE, K.FOUR],
   dropHands: [K.Q],
+  openDoor: [K.E],
   attack: [K.SHIFT],
   aim: [K.F],
   nextTarget: [K.TAB],
@@ -110,6 +115,18 @@ const REJECT_TEXT: Readonly<Record<PlanRejectReason, string>> = {
   invalidPlan: 'Этот план не выполнить — переберите действия',
 };
 
+/** Вещь на полу словами — для лога. */
+function lootName(item: GroundItem): string {
+  switch (item.kind) {
+    case 'weapon':
+      return WEAPON_NAMES[item.type];
+    case 'coins':
+      return item.amount === 1 ? 'монета' : `монеты ×${item.amount}`;
+    case 'key':
+      return 'ключ';
+  }
+}
+
 /** Оружие в руках: название и характеристики для HUD. */
 function weaponLabel(item: Item | null): string {
   const { damage, range, cost } = item ? WEAPONS[item.type] : UNARMED;
@@ -138,6 +155,8 @@ export class GameScene extends Phaser.Scene {
   private actors!: ActorLayer;
   private items!: ItemLayer;
   private fog!: FogLayer;
+  private mapView!: MapView;
+  private door!: DoorView;
   /** Клетки, которые сейчас видит команда (posKey); пересчитывается при каждом новом состоянии. */
   private visible: ReadonlySet<string> = new Set();
   private intents!: IntentLayer;
@@ -152,7 +171,9 @@ export class GameScene extends Phaser.Scene {
   /** Ещё не проигранные фазы пришедших событий. */
   private batches: GameEvent[][] = [];
   /** Что произошло за ход — строка в HUD (кто кого ударил, кто что подобрал). */
-  private turnLog: string[] = [];
+  private turnLog: { readonly phase: number; readonly text: string }[] = [];
+  /** Какая фаза хода сейчас проигрывается — для подписи в логе. */
+  private phase = 1;
   private lastLog = '';
   /** Имена акторов и предметов — помним и тех, кто уже погиб или исчез с пола. */
   private names = new Map<string, string>();
@@ -179,6 +200,7 @@ export class GameScene extends Phaser.Scene {
     this.batches = [];
     this.turnLog = [];
     this.lastLog = '';
+    this.phase = 1;
     this.names = new Map();
     this.goal = null;
     this.hover = null;
@@ -190,7 +212,9 @@ export class GameScene extends Phaser.Scene {
     const ui = new UiOverlay(this);
     this.ui = ui;
     const { state } = this.session;
-    new MapView(this, state.map, (obj) => ui.world(obj));
+    this.mapView = new MapView(this, state.map, (obj) => ui.world(obj));
+    this.door = new DoorView(this, ui);
+    this.door.sync(state.door);
     this.fog = new FogLayer(this, ui);
     this.items = new ItemLayer(this, ui);
     this.intents = new IntentLayer(this, ui);
@@ -222,8 +246,8 @@ export class GameScene extends Phaser.Scene {
     ui.text(
       12,
       10,
-      'Ход — 2 ОД · WASD — шаг · Shift+WASD — удар рядом · F — прицел · Пробел — ждать · ' +
-        '1–4 — в руки · Q — выбросить',
+      'Ход — 2 ОД · WASD — шаг · Shift+WASD — удар · F — прицел · Пробел — ждать · ' +
+        '1–4 — в руки · Q — выбросить · E — открыть дверь',
       UI_COLORS.muted,
     );
     ui.text(
@@ -320,6 +344,12 @@ export class GameScene extends Phaser.Scene {
     const slotKey = (KEYS.slots as readonly number[]).indexOf(code);
     if (slotKey >= 0) {
       this.chooseItem(slotKey, this.held('attack') ? 'drop' : 'equip');
+    } else if (this.is('openDoor', code)) {
+      const me = this.chooser();
+      if (me && canOpenDoor(this.session.state, me)) this.choose({ type: 'openDoor' }, null);
+      else if (me?.keys) this.ui.toast('Подойдите к двери вплотную');
+      else if (this.me()?.keys) this.ui.toast('Ключ уже потрачен в этом плане');
+      else this.ui.toast('Нужен ключ');
     } else if (this.is('dropHands', code)) {
       const hands = this.chooser()?.weapon;
       if (hands) this.choose({ type: 'drop', itemId: hands.id }, null);
@@ -442,6 +472,10 @@ export class GameScene extends Phaser.Scene {
 
     if (samePos(tile, me.pos)) {
       offer('Ждать', [WAIT], null);
+      if (me.keys > 0) offer('Выбросить ключ', [{ type: 'dropKey' }], null);
+      if (me.coins > 0) {
+        offer(`Выбросить монеты (${me.coins})`, [{ type: 'dropCoins', amount: me.coins }], null);
+      }
       for (const item of me.backpack) {
         offer(
           `Взять в руки: ${WEAPON_NAMES[item.type]}`,
@@ -457,6 +491,13 @@ export class GameScene extends Phaser.Scene {
         );
       }
     } else {
+      // Закрытая дверь: открыть, если рядом и есть ключ.
+      const { door } = this.session.state;
+      if (door && !door.open && samePos(door.pos, tile)) {
+        if (canOpenDoor(this.session.state, me))
+          offer('Открыть дверь', [{ type: 'openDoor' }], null);
+        else this.ui.toast(me.keys ? 'Подойдите к двери вплотную' : 'Дверь заперта — нужен ключ');
+      }
       // По клетке с кем-то первым предлагаем удар, по пустой — шаг.
       const occupied = Object.values(this.session.state.actors).some((a) => samePos(a.pos, tile));
       const attack = (): void => {
@@ -534,7 +575,7 @@ export class GameScene extends Phaser.Scene {
     target: Position,
     path: readonly Position[] | null,
   ): Action[] {
-    const { map } = this.session.state;
+    const world = this.session.state;
     const attack: Action = { type: 'attack', target };
     const steps = path ? this.stepsAlong(me.pos, path, ACTION_POINTS) : [];
     const candidates: Action[][] = [
@@ -542,7 +583,7 @@ export class GameScene extends Phaser.Scene {
       [attack, attack],
       [attack],
     ];
-    return candidates.find((plan) => isPlanValid(map, me, plan)) ?? steps;
+    return candidates.find((plan) => isPlanValid(world, me, plan)) ?? steps;
   }
 
   // ---------- Черновик и подтверждение ----------
@@ -560,7 +601,7 @@ export class GameScene extends Phaser.Scene {
   /** План «в уме» для героя (shared/rules/plan.ts): где он будет и что в руках к каждой фазе. */
   private simulate(plan: Plan): PlanSimulation | null {
     const me = this.me();
-    return me ? simulatePlan(this.session.state.map, me, plan) : null;
+    return me ? simulatePlan(this.session.state, me, plan) : null;
   }
 
   /** Все ОД плана заняты (меч занимает обе фазы одним действием). */
@@ -655,7 +696,7 @@ export class GameScene extends Phaser.Scene {
     }
     // Та же проверка, что в правилах: отправляем только то, что точно примут.
     const me = this.me();
-    if (!me || !isPlanValid(this.session.state.map, me, this.draft)) {
+    if (!me || !isPlanValid(this.session.state, me, this.draft)) {
       this.ui.toast(REJECT_TEXT.invalidPlan);
       return;
     }
@@ -701,7 +742,13 @@ export class GameScene extends Phaser.Scene {
       this.onTurnPlayed();
       return;
     }
-    for (const event of batch) this.playEvent(event);
+    // Кто в этой фазе кого-то задел: удар без единого урона — промах («мимо» и запись в лог).
+    const hitters = new Set(batch.flatMap((e) => (e.type === 'damaged' ? [e.by] : [])));
+    for (const event of batch) {
+      this.playEvent(event);
+      if (event.type === 'attacked' && !hitters.has(event.actorId))
+        this.onMiss(event.actorId, event.target);
+    }
     if (this.actors.busy) this.redraw();
     else this.playNextPhase();
   }
@@ -724,20 +771,32 @@ export class GameScene extends Phaser.Scene {
       case 'turnResolved':
         this.actors.clearReady();
         this.sent = null;
-        this.lastLog = this.turnLog.join(' · ');
+        this.lastLog = this.formatLog();
         this.turnLog = [];
+        this.phase = 1;
+        break;
+      case 'phaseResolved':
+        this.phase = event.phase + 1;
         break;
       case 'damaged':
       case 'died':
       case 'itemPickedUp':
       case 'itemEquipped':
       case 'itemDropped':
+      case 'exited':
         this.logEvent(event);
         break;
+      case 'doorOpened': {
+        // Дверь стала проходом: в карте пол — перерисовать стены вокруг и саму дверь.
+        const { state } = this.session;
+        this.mapView.setMap(state.map);
+        this.door.sync(state.door);
+        this.logEvent(event);
+        break;
+      }
       case 'gameOver':
         this.showGameOver(event.status);
         break;
-      case 'phaseResolved':
       case 'moved':
       case 'bumped':
       case 'waited':
@@ -759,7 +818,7 @@ export class GameScene extends Phaser.Scene {
         this.names.set(item.id, WEAPON_NAMES[item.type]);
       }
     }
-    for (const item of Object.values(state.items)) this.names.set(item.id, WEAPON_NAMES[item.type]);
+    for (const item of Object.values(state.items)) this.names.set(item.id, lootName(item));
     this.names.set(LOCAL_ID, 'вы');
   }
 
@@ -770,39 +829,68 @@ export class GameScene extends Phaser.Scene {
       id === LOCAL_ID || this.actors.spriteOf(id)?.visible === true;
     switch (event.type) {
       case 'damaged':
-        if (event.by === LOCAL_ID)
-          this.turnLog.push(`вы попали: ${name(event.actorId)} −${event.amount}`);
+        if (event.by === LOCAL_ID) this.log(`вы попали: ${name(event.actorId)} −${event.amount}`);
         else if (event.actorId === LOCAL_ID)
-          this.turnLog.push(`${name(event.by)} попал по вам −${event.amount}`);
+          this.log(`${name(event.by)} попал по вам −${event.amount}`);
         return;
       case 'died':
         if (seen(event.actorId))
-          this.turnLog.push(
-            event.actorId === LOCAL_ID ? 'вы погибли' : `${name(event.actorId)} убит`,
-          );
+          this.log(event.actorId === LOCAL_ID ? 'вы погибли' : `${name(event.actorId)} убит`);
         return;
       case 'itemPickedUp':
         if (seen(event.actorId)) {
           const who =
             event.actorId === LOCAL_ID ? 'вы подобрали' : `${name(event.actorId)} подобрал`;
-          this.turnLog.push(`${who}: ${name(event.itemId)}`);
+          this.log(`${who}: ${name(event.itemId)}`);
         }
         return;
       case 'itemEquipped':
         if (seen(event.actorId)) {
           const who =
             event.actorId === LOCAL_ID ? 'вы взяли в руки' : `${name(event.actorId)} взял в руки`;
-          this.turnLog.push(`${who}: ${name(event.itemId)}`);
+          this.log(`${who}: ${name(event.itemId)}`);
         }
         return;
+      case 'doorOpened':
+        this.log(event.actorId === LOCAL_ID ? 'вы открыли дверь' : 'дверь открыта');
+        return;
+      case 'exited':
+        this.log(event.actorId === LOCAL_ID ? 'вы вышли из подземелья' : 'союзник вышел');
+        return;
       case 'itemDropped':
-        if (event.actorId === LOCAL_ID) this.turnLog.push(`вы выбросили: ${name(event.itemId)}`);
-        else if (this.visible.has(posKey(event.at)))
-          this.turnLog.push(`на полу: ${name(event.itemId)}`);
+        if (event.actorId === LOCAL_ID) this.log(`вы выбросили: ${name(event.itemId)}`);
+        else if (this.visible.has(posKey(event.at))) this.log(`на полу: ${name(event.itemId)}`);
         return;
       default:
         return;
     }
+  }
+
+  /** Удар никого не задел: «мимо» над клеткой (если её видно) и запись в лог. */
+  private onMiss(attackerId: ActorId, target: Position): void {
+    if (this.visible.has(posKey(target))) this.actors.floatMiss(target);
+    if (attackerId === LOCAL_ID) this.log('вы — мимо');
+    else if (this.actors.spriteOf(attackerId)?.visible) {
+      this.log(`${this.names.get(attackerId) ?? '?'} — мимо`);
+    }
+  }
+
+  private log(text: string): void {
+    this.turnLog.push({ phase: this.phase, text });
+  }
+
+  /** Лог хода по фазам: «ф1: вы — мимо · ф2: вы попали: скелет −3». */
+  private formatLog(): string {
+    const phases = [...new Set(this.turnLog.map((e) => e.phase))];
+    return phases
+      .map(
+        (p) =>
+          `ф${p}: ${this.turnLog
+            .filter((e) => e.phase === p)
+            .map((e) => e.text)
+            .join(', ')}`,
+      )
+      .join(' · ');
   }
 
   /** Анимации текущей фазы закончились (колбэк ActorLayer). */
@@ -825,7 +913,9 @@ export class GameScene extends Phaser.Scene {
     this.goal = null;
     this.popup.hide();
     const { width, height } = this.scale;
-    const title = status === 'won' ? 'Победа!' : 'Вы погибли';
+    const loot = this.session.state.escaped[LOCAL_ID];
+    const title =
+      status === 'lost' ? 'Вы погибли' : loot ? 'Уровень пройден!' : 'Уровень пройден без вас';
     this.ui.add(this.add.rectangle(0, 0, width, height, UI_COLORS.panel, 0.6).setOrigin(0));
     this.ui
       .add(
@@ -836,7 +926,12 @@ export class GameScene extends Phaser.Scene {
         }),
       )
       .setOrigin(0.5);
-    this.ui.text(width / 2, height / 2 + 30, 'Esc — выйти', UI_COLORS.muted).setOrigin(0.5);
+    const summary = loot
+      ? `Вынесено: монет ${loot.coins} · в руках: ${WEAPON_NAMES[loot.weapon?.type ?? 'none']} · ` +
+        `в рюкзаке: ${loot.backpack.map((i) => WEAPON_NAMES[i.type]).join(', ') || 'пусто'}`
+      : 'Всё, что вы несли, потеряно';
+    this.ui.text(width / 2, height / 2 + 26, summary).setOrigin(0.5);
+    this.ui.text(width / 2, height / 2 + 52, 'Esc — выйти', UI_COLORS.muted).setOrigin(0.5);
   }
 
   // ---------- Отрисовка ----------
@@ -861,7 +956,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Намерения плана: каждое — с клетки, где актор будет в фазе, когда действие сработает. */
   private planIntents(actor: Actor, plan: Plan, color: number, confirmed: boolean): Intent[] {
-    const sim = simulatePlan(this.session.state.map, actor, plan);
+    const sim = simulatePlan(this.session.state, actor, plan);
     const intents: Intent[] = plan.map((action, i) => {
       const phase = sim?.phaseOf[i] ?? i;
       return {
@@ -935,6 +1030,12 @@ export class GameScene extends Phaser.Scene {
         return `взять: ${name(action.itemId)}`;
       case 'drop':
         return `выбросить: ${name(action.itemId)}`;
+      case 'dropCoins':
+        return `выбросить монеты (${action.amount})`;
+      case 'dropKey':
+        return 'выбросить ключ';
+      case 'openDoor':
+        return 'открыть дверь';
     }
   }
 
@@ -960,7 +1061,9 @@ export class GameScene extends Phaser.Scene {
       const item = me.backpack[i];
       return `${i + 1}) ${item ? WEAPON_NAMES[item.type] : '—'}`;
     }).join(' ');
-    const inventory = `Руки: ${weaponLabel(me.weapon)} · Рюкзак: ${slots}`;
+    const inventory =
+      `Руки: ${weaponLabel(me.weapon)} · Рюкзак: ${slots} · Монеты: ${me.coins}` +
+      (me.keys > 0 ? ' · Ключ ⚿' : '');
     const used = this.simulate(this.draft)?.used ?? 0;
     const choice = this.sent
       ? `План: ${this.describePlan(this.sent)} ✓ — ждём остальных`

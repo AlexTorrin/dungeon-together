@@ -7,6 +7,7 @@ import {
   resizeRoom,
   roomEntityAt,
   serializeRoom,
+  setRoomDoor,
   setRoomEntity,
   setRoomSpawn,
   setRoomTile,
@@ -35,20 +36,28 @@ describe('serializeRoom', () => {
     expect(serializeRoom(parseRoom(ascii))).toBe(ascii);
   });
 
-  it('round-trips monsters and items', () => {
-    const ascii = ['#######', '#S@.mr#', '#K...V#', '#######'].join('\n');
+  it('round-trips monsters, items, coins, key and the door', () => {
+    const ascii = ['###+###', '#S@.mr#', '#K$!.V#', '#######'].join('\n');
     const room = parseRoom(ascii);
     expect(room.monsters).toEqual([
-      { species: 'skeleton', pos: { x: 1, y: 1 } },
-      { species: 'skull', pos: { x: 1, y: 2 } },
-      { species: 'vampire', pos: { x: 5, y: 2 } },
+      { species: 'skeleton', pos: { x: 1, y: 1 }, weapon: null, coins: 0, key: false },
+      { species: 'skull', pos: { x: 1, y: 2 }, weapon: null, coins: 0, key: false },
+      { species: 'vampire', pos: { x: 5, y: 2 }, weapon: null, coins: 0, key: false },
     ]);
     expect(room.items).toEqual([
-      { type: 'knife', pos: { x: 4, y: 1 } },
-      { type: 'bow', pos: { x: 5, y: 1 } },
+      { kind: 'weapon', type: 'knife', pos: { x: 4, y: 1 } },
+      { kind: 'weapon', type: 'bow', pos: { x: 5, y: 1 } },
+      { kind: 'coins', amount: 1, pos: { x: 2, y: 2 } },
+      { kind: 'key', pos: { x: 3, y: 2 } },
     ]);
+    expect(room.door).toEqual({ x: 3, y: 0 });
+    expect(getTile(room.map, { x: 3, y: 0 })).toBe('wall'); // закрытая дверь — стена
     expect(getTile(room.map, { x: 1, y: 1 })).toBe('floor');
     expect(serializeRoom(room)).toBe(ascii);
+  });
+
+  it('allows at most one door', () => {
+    expect(() => parseRoom('#+@+#')).toThrow(/at most one/);
   });
 });
 
@@ -56,7 +65,11 @@ describe('setRoomEntity / setRoomTile', () => {
   const room = createEmptyRoom(6, 5); // старт в (3,2)
 
   it('places one thing per cell, replacing the previous one', () => {
-    let next = setRoomEntity(room, { x: 1, y: 1 }, { kind: 'item', type: 'bow' });
+    let next = setRoomEntity(
+      room,
+      { x: 1, y: 1 },
+      { kind: 'item', item: { kind: 'weapon', type: 'bow' } },
+    );
     next = setRoomEntity(next, { x: 1, y: 1 }, { kind: 'monster', species: 'vampire' });
     expect(roomEntityAt(next, { x: 1, y: 1 })).toEqual({ kind: 'monster', species: 'vampire' });
     expect(next.items).toEqual([]);
@@ -65,7 +78,9 @@ describe('setRoomEntity / setRoomTile', () => {
   it('puts floor under a placed thing and never places on spawn', () => {
     const onWall = setRoomEntity(room, { x: 0, y: 0 }, { kind: 'monster', species: 'skull' });
     expect(getTile(onWall.map, { x: 0, y: 0 })).toBe('floor');
-    expect(setRoomEntity(room, room.spawn, { kind: 'item', type: 'knife' })).toBe(room);
+    expect(
+      setRoomEntity(room, room.spawn, { kind: 'item', item: { kind: 'weapon', type: 'knife' } }),
+    ).toBe(room);
   });
 
   it('a wall removes what stood in the cell; spawn stays floor', () => {
@@ -103,6 +118,15 @@ describe('setRoomSpawn', () => {
   });
 });
 
+describe('setRoomDoor', () => {
+  it('puts a single door into a wall, replacing the previous one; floor removes it', () => {
+    const room = setRoomDoor(setRoomDoor(createEmptyRoom(6, 5), { x: 1, y: 0 }), { x: 4, y: 0 });
+    expect(room.door).toEqual({ x: 4, y: 0 });
+    expect(getTile(room.map, { x: 4, y: 0 })).toBe('wall');
+    expect(setRoomTile(room, { x: 4, y: 0 }, 'floor').door).toBeNull();
+  });
+});
+
 describe('resizeRoom', () => {
   it('clamps spawn to the new size and keeps floor under it', () => {
     const room = resizeRoom(setRoomSpawn(createEmptyRoom(6, 6), { x: 4, y: 4 }), 3, 3);
@@ -114,13 +138,15 @@ describe('resizeRoom', () => {
     const room = {
       ...createEmptyRoom(6, 6),
       monsters: [
-        { species: 'skull' as const, pos: { x: 1, y: 1 } },
-        { species: 'vampire' as const, pos: { x: 5, y: 5 } },
+        { species: 'skull' as const, pos: { x: 1, y: 1 }, weapon: null, coins: 0, key: false },
+        { species: 'vampire' as const, pos: { x: 5, y: 5 }, weapon: null, coins: 0, key: false },
       ],
-      items: [{ type: 'bow' as const, pos: { x: 4, y: 1 } }],
+      items: [{ kind: 'weapon' as const, type: 'bow' as const, pos: { x: 4, y: 1 } }],
     };
     const resized = resizeRoom(room, 4, 4);
-    expect(resized.monsters).toEqual([{ species: 'skull', pos: { x: 1, y: 1 } }]);
+    expect(resized.monsters).toEqual([
+      { species: 'skull', pos: { x: 1, y: 1 }, weapon: null, coins: 0, key: false },
+    ]);
     expect(resized.items).toEqual([]);
   });
 });

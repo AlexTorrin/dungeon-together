@@ -1,4 +1,4 @@
-import type { WeaponType } from '@dt/shared';
+import type { Loot, WeaponType } from '@dt/shared';
 
 /** Ключи текстур/анимаций и пути к файлам в assets/. */
 export const TEXTURES = {
@@ -15,6 +15,9 @@ export const ASSET_PATHS = {
   bowItem: 'custom/bow.png',
   swordItem: 'custom/sword.png',
   wandItem: 'custom/wand.png',
+  /** Дверь-выход: закрытая и открытая (tools/sprites/door.mjs). */
+  doorClosed: 'custom/door_closed.png',
+  doorOpen: 'custom/door_open.png',
   /** Стены для всех сочетаний соседей, собраны из тайлсета пака (tools/sprites/walls.mjs). */
   walls: 'custom/walls.png',
 } as const;
@@ -54,6 +57,17 @@ export const ANIMATIONS = {
   vampireIdle: {
     key: 'vampire-idle',
     frames: frames('Character_animation/monsters_idle/vampire/v1', 'vampire_v1', 4),
+    frameRate: 6,
+  },
+  /** Монета и ключ на полу — анимации из пака. */
+  coin: {
+    key: 'coin',
+    frames: frames('items and trap_animation/coin', 'coin', 4),
+    frameRate: 6,
+  },
+  key: {
+    key: 'key',
+    frames: frames('items and trap_animation/keys', 'keys_1', 4),
     frameRate: 6,
   },
   torch: {
@@ -108,3 +122,15 @@ export const ITEM_LOOKS: Readonly<Record<WeaponType, StaticLook>> = {
   sword: { texture: ASSET_PATHS.swordItem },
   wand: { texture: ASSET_PATHS.wandItem },
 };
+
+/** Как выглядит вещь на полу: оружие — свой спрайт, монеты и ключ — анимация из пака. */
+export function lootLook(loot: Loot): StaticLook & { readonly anim?: string } {
+  switch (loot.kind) {
+    case 'weapon':
+      return ITEM_LOOKS[loot.type];
+    case 'coins':
+      return { texture: firstFrame(ANIMATIONS.coin), anim: ANIMATIONS.coin.key };
+    case 'key':
+      return { texture: firstFrame(ANIMATIONS.key), anim: ANIMATIONS.key.key };
+  }
+}

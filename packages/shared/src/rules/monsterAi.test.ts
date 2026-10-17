@@ -52,7 +52,7 @@ describe('chooseMonsterAction', () => {
     const state = makeState(
       ARENA,
       [playerAt('p1', 1, 2), monsterAt('m', 'skull', 6, 2)],
-      [{ id: 'i', type: 'knife', pos: { x: 8, y: 2 } }],
+      [{ id: 'i', kind: 'weapon', type: 'knife', pos: { x: 8, y: 2 } }],
     );
     expect(chooseMonsterAction(state, monsterOf(state, 'm'), seedRng(1))[0]).toEqual({
       type: 'move',

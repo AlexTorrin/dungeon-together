@@ -35,18 +35,18 @@ const sword = weapon('sw', 'sword');
 
 describe('sword: 2 action points, strikes in phase 2', () => {
   it('a sword blow takes the whole turn and lands in phase 2', () => {
-    const { map } = makeState(ARENA, []);
-    const sim = simulatePlan(map, playerAt('p1', 1, 1, { weapon: sword }), [hit(2, 1)]);
+    const world = makeState(ARENA, []);
+    const sim = simulatePlan(world, playerAt('p1', 1, 1, { weapon: sword }), [hit(2, 1)]);
     expect(sim?.phases).toEqual([wait, hit(2, 1)]);
     expect(sim?.phaseOf).toEqual([1]);
   });
 
   it('does not fit with anything else into one turn', () => {
-    const { map } = makeState(ARENA, []);
+    const world = makeState(ARENA, []);
     const p = playerAt('p1', 1, 1, { weapon: sword });
-    expect(isPlanValid(map, p, [right, hit(3, 1)])).toBe(false);
+    expect(isPlanValid(world, p, [right, hit(3, 1)])).toBe(false);
     expect(
-      isPlanValid(map, playerAt('p1', 1, 1, { backpack: [sword] }), [equip('sw'), hit(2, 1)]),
+      isPlanValid(world, playerAt('p1', 1, 1, { backpack: [sword] }), [equip('sw'), hit(2, 1)]),
     ).toBe(false);
   });
 
@@ -62,15 +62,15 @@ describe('sword: 2 action points, strikes in phase 2', () => {
 
 describe('wand and bow range', () => {
   it('a wand reaches 6 cells, a bow only 4', () => {
-    const { map } = makeState(ARENA, []);
+    const world = makeState(ARENA, []);
     expect(
-      isPlanValid(map, playerAt('p1', 1, 1, { weapon: weapon('w', 'wand') }), [hit(7, 1)]),
+      isPlanValid(world, playerAt('p1', 1, 1, { weapon: weapon('w', 'wand') }), [hit(7, 1)]),
     ).toBe(true);
     expect(
-      isPlanValid(map, playerAt('p1', 1, 1, { weapon: weapon('b', 'bow') }), [hit(7, 1)]),
+      isPlanValid(world, playerAt('p1', 1, 1, { weapon: weapon('b', 'bow') }), [hit(7, 1)]),
     ).toBe(false);
     expect(
-      isPlanValid(map, playerAt('p1', 1, 1, { weapon: weapon('b', 'bow') }), [hit(5, 1)]),
+      isPlanValid(world, playerAt('p1', 1, 1, { weapon: weapon('b', 'bow') }), [hit(5, 1)]),
     ).toBe(true);
   });
 });
@@ -102,7 +102,12 @@ describe('equip and drop', () => {
     ]);
     const { state: next, events } = turn(state, { p1: [drop('k'), wait], p2: [wait, wait] });
     expect(next.actors['p1']?.weapon).toBeNull();
-    expect(next.items['k']).toEqual({ id: 'k', type: 'knife', pos: { x: 2, y: 1 } });
+    expect(next.items['k']).toEqual({
+      id: 'k',
+      kind: 'weapon',
+      type: 'knife',
+      pos: { x: 2, y: 1 },
+    });
     expect(events).toContainEqual({
       type: 'itemDropped',
       actorId: 'p1',
@@ -126,7 +131,7 @@ describe('equip and drop', () => {
     const state = makeState(
       ARENA,
       [playerAt('p1', 1, 1, { backpack: full })],
-      [{ id: 'extra', type: 'bow', pos: { x: 2, y: 1 } }],
+      [{ id: 'extra', kind: 'weapon', type: 'bow', pos: { x: 2, y: 1 } }],
     );
     const { state: next } = turn(state, { p1: [right] });
     expect(next.actors['p1']?.backpack).toHaveLength(4);

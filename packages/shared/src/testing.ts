@@ -31,6 +31,8 @@ export function playerAt(
     maxHp: PLAYER_MAX_HP,
     weapon: null,
     backpack: [],
+    coins: 0,
+    keys: 0,
     ...extra,
   };
 }
@@ -52,6 +54,8 @@ export function monsterAt(
     maxHp,
     weapon: null,
     backpack: [],
+    coins: 0,
+    keys: 0,
     ...extra,
   };
 }

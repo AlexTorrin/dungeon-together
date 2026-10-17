@@ -101,7 +101,9 @@ export function chooseMonsterAction(
   if (players.some((p) => canAttack(state.map, monster, p.pos))) return [{ type: 'wait' }, rng];
 
   if (!monster.weapon && monster.backpack.length === 0) {
-    const items = Object.values(state.items).filter((i) => sees.has(posKey(i.pos)));
+    const items = Object.values(state.items).filter(
+      (i) => i.kind === 'weapon' && sees.has(posKey(i.pos)),
+    );
     const item = nearest(state, monster.pos, items, (i) => i.pos, ITEM_SEARCH_RADIUS);
     if (item) return [stepAlong(monster.pos, item.path), rng];
   }

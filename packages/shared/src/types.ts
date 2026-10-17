@@ -20,23 +20,32 @@ export type MonsterSpecies = 'skeleton' | 'skull' | 'vampire';
 /** Оружие (характеристики — config/weapons.ts): нож и меч бьют соседнюю клетку, лук и палочка — издалека. */
 export type WeaponType = 'knife' | 'bow' | 'sword' | 'wand';
 
-/** Расстановка в комнате (то, что рисует редактор); id появляются только в GameState. */
+/** Что может лежать на полу: оружие, кучка монет или ключ от двери-выхода. */
+export type Loot =
+  | { readonly kind: 'weapon'; readonly type: WeaponType }
+  | { readonly kind: 'coins'; readonly amount: number }
+  | { readonly kind: 'key' };
+
+/** Расстановка в комнате (то, что рисует редактор или генератор); id появляются только в GameState. */
 export interface RoomMonster {
   readonly species: MonsterSpecies;
   readonly pos: Position;
+  /** Что монстр несёт с собой и роняет при смерти. */
+  readonly weapon: WeaponType | null;
+  readonly coins: number;
+  readonly key: boolean;
 }
 
-export interface RoomItem {
-  readonly type: WeaponType;
-  readonly pos: Position;
-}
+export type RoomItem = Loot & { readonly pos: Position };
 
-/** Комната: карта, точка появления игроков, монстры и предметы. Единица, которую делает редактор. */
+/** Комната: карта, точка появления игроков, монстры, предметы, дверь. Единица, которую делает редактор. */
 export interface Room {
   readonly map: GameMap;
   readonly spawn: Position;
   readonly monsters: readonly RoomMonster[];
   readonly items: readonly RoomItem[];
+  /** Дверь-выход в стене (клетка — стена, пока дверь закрыта); null — выход только через победу. */
+  readonly door: Position | null;
 }
 
 /** id любого участника хода — игрока или монстра. */
@@ -44,15 +53,14 @@ export type ActorId = string;
 export type PlayerId = ActorId;
 export type ItemId = string;
 
+/** Оружие у актора — в руках или в рюкзаке. */
 export interface Item {
   readonly id: ItemId;
   readonly type: WeaponType;
 }
 
-/** Предмет, лежащий на полу. Предмет в руках хранится в Actor.weapon. */
-export interface GroundItem extends Item {
-  readonly pos: Position;
-}
+/** Предмет, лежащий на полу. Подобранное оружие становится Item, монеты и ключ — счётчиками актора. */
+export type GroundItem = Loot & { readonly id: ItemId; readonly pos: Position };
 
 interface ActorBase {
   readonly id: ActorId;
@@ -63,6 +71,9 @@ interface ActorBase {
   readonly weapon: Item | null;
   /** Рюкзак: до BACKPACK_SIZE предметов (config/inventory.ts). Подобранное попадает сюда. */
   readonly backpack: readonly Item[];
+  /** Монеты и ключи места в рюкзаке не занимают. */
+  readonly coins: number;
+  readonly keys: number;
 }
 
 export interface PlayerActor extends ActorBase {
@@ -88,7 +99,13 @@ export type Action =
   /** Взять в руки предмет из рюкзака; то, что было в руках, уходит в рюкзак на его место. */
   | { readonly type: 'equip'; readonly itemId: ItemId }
   /** Выбросить предмет (из рук или рюкзака) на свою клетку — например, чтобы отдать союзнику. */
-  | { readonly type: 'drop'; readonly itemId: ItemId };
+  | { readonly type: 'drop'; readonly itemId: ItemId }
+  /** Выбросить часть своих монет кучкой на свою клетку. */
+  | { readonly type: 'dropCoins'; readonly amount: number }
+  /** Выбросить ключ на свою клетку. */
+  | { readonly type: 'dropKey' }
+  /** Открыть дверь-выход ключом (стоя рядом); ключ тратится. */
+  | { readonly type: 'openDoor' };
 
 /**
  * План на ход: до ACTION_POINTS действий по порядку фаз (config/turn.ts). Короткий план
@@ -96,7 +113,20 @@ export type Action =
  */
 export type Plan = readonly Action[];
 
+/** won — уровень пройден (убиты все монстры или кто-то вышел через дверь); lost — все погибли. */
 export type GameStatus = 'playing' | 'won' | 'lost';
+
+/** Что игрок вынес с уровня — понадобится хабу (магазин, сундук). */
+export interface Carried {
+  readonly coins: number;
+  readonly weapon: Item | null;
+  readonly backpack: readonly Item[];
+}
+
+export interface Door {
+  readonly pos: Position;
+  readonly open: boolean;
+}
 
 /**
  * Модель ходов — одновременная: каждый игрок выбирает план на ход (pendingPlans),
@@ -119,4 +149,8 @@ export interface GameState {
    * Что видно прямо сейчас, не хранится — это выводится из позиций (map/fov.ts).
    */
   readonly explored: readonly boolean[];
+  /** Дверь-выход: закрытая — стена; открытая — проход, шагнувший в неё игрок покидает уровень. */
+  readonly door: Door | null;
+  /** Кто покинул уровень и что унёс (через дверь или после победы). */
+  readonly escaped: Readonly<Record<PlayerId, Carried>>;
 }

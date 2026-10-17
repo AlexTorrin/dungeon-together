@@ -4,6 +4,7 @@ import {
   isInBounds,
   resizeRoom,
   serializeRoom,
+  setRoomDoor,
   setRoomEntity,
   setRoomSpawn,
   setRoomTile,
@@ -11,7 +12,7 @@ import {
   type Room,
   type RoomEntity,
 } from '@dt/shared';
-import { ANIMATIONS, ITEM_LOOKS, firstFrame } from '../assetKeys';
+import { ANIMATIONS, ASSET_PATHS, firstFrame, lootLook } from '../assetKeys';
 import { monsterLook } from '../render/actorLooks';
 import { EDITOR, TILE_SIZE, UI_COLORS } from '../config';
 import { MapView, tileCenter } from '../render/mapView';
@@ -20,11 +21,15 @@ import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
 import { SCENES, type EditorDraft, type EditorSceneData, type GameSceneData } from './sceneKeys';
 
-/** Инструмент: тайл, точка старта или монстр/предмет. «Пол» заодно стирает монстров и предметы. */
+/**
+ * Инструмент: тайл, точка старта, дверь-выход или монстр/вещь. «Пол» заодно стирает монстров,
+ * вещи и дверь.
+ */
 type Tool =
   | { readonly kind: 'wall' }
   | { readonly kind: 'floor' }
   | { readonly kind: 'spawn' }
+  | { readonly kind: 'door' }
   | { readonly kind: 'entity'; readonly entity: RoomEntity };
 
 /** Им же рисует правая кнопка мыши. Один объект: кнопки инструментов сравниваются по ссылке. */
@@ -50,29 +55,39 @@ const TOOLS: readonly { tool: Tool; label: string; key: string }[] = [
     key: 'SIX',
   },
   {
-    tool: { kind: 'entity', entity: { kind: 'item', type: 'knife' } },
+    tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'weapon', type: 'knife' } } },
     label: '7 Нож',
     key: 'SEVEN',
   },
   {
-    tool: { kind: 'entity', entity: { kind: 'item', type: 'bow' } },
+    tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'weapon', type: 'bow' } } },
     label: '8 Лук',
     key: 'EIGHT',
   },
   {
-    tool: { kind: 'entity', entity: { kind: 'item', type: 'sword' } },
+    tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'weapon', type: 'sword' } } },
     label: '9 Меч',
     key: 'NINE',
   },
   {
-    tool: { kind: 'entity', entity: { kind: 'item', type: 'wand' } },
+    tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'weapon', type: 'wand' } } },
     label: '0 Палочка',
     key: 'ZERO',
   },
 ];
 
+/** Второй ряд — без горячих клавиш: дверь-выход, монета, ключ. */
+const EXTRA_TOOLS: readonly { tool: Tool; label: string }[] = [
+  { tool: { kind: 'door' }, label: 'Дверь' },
+  {
+    tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'coins', amount: 1 } } },
+    label: 'Монета',
+  },
+  { tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'key' } } }, label: 'Ключ' },
+];
+
 /** Высота панели инструментов сверху; клики по ней не рисуют на карте. */
-const TOOLBAR_HEIGHT = 124;
+const TOOLBAR_HEIGHT = 132;
 const MARGIN = 24;
 
 function newDraft(): EditorDraft {
@@ -136,28 +151,28 @@ export class RoomEditorScene extends Phaser.Scene {
     const { ui } = this;
     ui.add(this.add.rectangle(0, 0, 4096, TOOLBAR_HEIGHT, UI_COLORS.panel, 0.92).setOrigin(0));
 
-    const tools = TOOLS.map(({ tool, label }) => {
+    const toolButton = ({ tool, label }: { tool: Tool; label: string }): TextButton => {
       const button = ui.add(new TextButton(this, 0, 0, label, () => this.selectTool(tool)));
       this.toolButtons.set(tool, button);
       return button;
-    });
+    };
     const btn = (label: string, onClick: () => void): TextButton =>
       ui.add(new TextButton(this, 0, 0, label, onClick));
 
-    layoutRow(tools, 12, 10);
-    const x =
-      layoutRow(
-        [
-          btn('Новая', () => this.scene.restart({})),
-          btn('Сохранить', () => this.save()),
-          btn('Удалить', () => this.remove()),
-          btn('ASCII', () => void this.copyAscii()),
-          btn('▶ Тест', () => this.test()),
-          btn('Меню', () => this.scene.start(SCENES.menu)),
-        ],
-        12,
-        50,
-      ) + 18;
+    layoutRow(TOOLS.map(toolButton), 12, 10);
+    const x = layoutRow(EXTRA_TOOLS.map(toolButton), 12, 50) + 18;
+    const actionsEnd = layoutRow(
+      [
+        btn('Новая', () => this.scene.restart({})),
+        btn('Сохранить', () => this.save()),
+        btn('Удалить', () => this.remove()),
+        btn('ASCII', () => void this.copyAscii()),
+        btn('▶ Тест', () => this.test()),
+        btn('Меню', () => this.scene.start(SCENES.menu)),
+      ],
+      12,
+      90,
+    );
 
     this.sizeLabel = ui.text(0, 0, '');
     // Фиксированная ширина, чтобы название справа не прыгало при смене размера.
@@ -173,11 +188,11 @@ export class RoomEditorScene extends Phaser.Scene {
       x,
       50,
     );
-    this.title = ui.text(12, 96, '');
+    this.title = ui.text(actionsEnd + 18, 96, '');
     ui.text(
       12,
       TOOLBAR_HEIGHT + 6,
-      'ЛКМ — рисовать · ПКМ — стена · 1–0 — инструмент (Пол стирает монстров и предметы) · ' +
+      'ЛКМ — рисовать · ПКМ — стена · 1–0 — инструмент (Пол стирает монстров, вещи и дверь) · ' +
         'T — тест · Esc — меню',
       UI_COLORS.muted,
     );
@@ -225,6 +240,8 @@ export class RoomEditorScene extends Phaser.Scene {
         return setRoomTile(setRoomEntity(room, pos, null), pos, 'floor');
       case 'wall':
         return setRoomTile(room, pos, 'wall'); // на точку старта стену не ставит
+      case 'door':
+        return setRoomDoor(room, pos);
       case 'entity':
         return setRoomEntity(room, pos, tool.entity);
     }
@@ -314,10 +331,15 @@ export class RoomEditorScene extends Phaser.Scene {
         const { texture, frame, anim } = monsterLook(species);
         return this.ui.world(this.add.sprite(...tileCenter(pos), texture, frame).play(anim));
       }),
-      ...room.items.map(({ type, pos }) => {
-        const look = ITEM_LOOKS[type];
-        return this.ui.world(this.add.image(...tileCenter(pos), look.texture, look.frame));
+      ...room.items.map((item) => {
+        const look = lootLook(item);
+        const sprite = this.add.sprite(...tileCenter(item.pos), look.texture, look.frame);
+        if (look.anim) sprite.play(look.anim);
+        return this.ui.world(sprite);
       }),
+      ...(room.door
+        ? [this.ui.world(this.add.image(...tileCenter(room.door), ASSET_PATHS.doorClosed))]
+        : []),
     ];
   }
 

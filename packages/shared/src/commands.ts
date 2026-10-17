@@ -54,7 +54,7 @@ export type GameEvent =
       readonly hp: number;
     }
   | { readonly type: 'died'; readonly actorId: ActorId; readonly at: Position }
-  /** Актор поднял предмет с пола в рюкзак. */
+  /** Актор поднял вещь с пола: оружие — в рюкзак, монеты и ключ — в счётчики. */
   | { readonly type: 'itemPickedUp'; readonly actorId: ActorId; readonly itemId: ItemId }
   /** Актор взял предмет из рюкзака в руки. */
   | { readonly type: 'itemEquipped'; readonly actorId: ActorId; readonly itemId: ItemId }
@@ -66,6 +66,10 @@ export type GameEvent =
       readonly at: Position;
     }
   | { readonly type: 'gameOver'; readonly status: Exclude<GameStatus, 'playing'> }
+  /** Дверь-выход открыта ключом — теперь это проход. */
+  | { readonly type: 'doorOpened'; readonly actorId: ActorId; readonly at: Position }
+  /** Игрок вышел через открытую дверь и унёс всё, что нёс. */
+  | { readonly type: 'exited'; readonly actorId: ActorId; readonly at: Position }
   /** Фаза хода разрешена (1, 2, …): клиент проигрывает фазы по очереди. */
   | { readonly type: 'phaseResolved'; readonly phase: number }
   /** Ход разрешён; turn — номер только что завершённого хода. */

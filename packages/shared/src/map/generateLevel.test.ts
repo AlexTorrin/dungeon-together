@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEVEL } from '../config/level';
+import { DIFFICULTIES, DIFFICULTY_LIST, LEVEL } from '../config/level';
 import { createGameState } from '../state/createGameState';
 import { getTile, isWalkable } from './gameMap';
 import { generateLevel } from './generateLevel';
@@ -52,8 +52,8 @@ describe('generateLevel', () => {
 
   it.each(SEEDS)('seed %i: monsters and items on distinct floor cells, none at spawn', (seed) => {
     const room = generateLevel(seed);
-    expect(room.monsters).toHaveLength(LEVEL.monsters);
-    expect(room.items).toHaveLength(LEVEL.items);
+    expect(room.monsters).toHaveLength(DIFFICULTIES.medium.monsters);
+    expect(room.items.filter((i) => i.kind === 'weapon')).toHaveLength(LEVEL.items);
     const cells = [...room.monsters, ...room.items].map((e) => e.pos);
     for (const cell of cells) expect(isWalkable(room.map, cell)).toBe(true);
     const keys = cells.map(posKey);
@@ -74,7 +74,39 @@ describe('generateLevel', () => {
   it('works with createGameState', () => {
     const state = createGameState(generateLevel(5), ['p1', 'p2'], 5);
     expect(Object.values(state.actors).filter((a) => a.kind === 'monster')).toHaveLength(
-      LEVEL.monsters,
+      DIFFICULTIES.medium.monsters,
     );
   });
+
+  it.each(DIFFICULTY_LIST)(
+    'difficulty %s: monsters, armed monsters and coins as configured',
+    (difficulty) => {
+      const config = DIFFICULTIES[difficulty];
+      for (const seed of SEEDS) {
+        const room = generateLevel(seed, difficulty);
+        expect(room.monsters).toHaveLength(config.monsters);
+        for (const m of room.monsters) expect(config.species).toContain(m.species);
+        expect(room.monsters.filter((m) => m.weapon)).toHaveLength(config.armed);
+        const coins =
+          room.monsters.reduce((sum, m) => sum + m.coins, 0) +
+          room.items.reduce((sum, i) => sum + (i.kind === 'coins' ? i.amount : 0), 0);
+        expect(coins).toBeGreaterThanOrEqual(config.coins[0]);
+        expect(coins).toBeLessThanOrEqual(config.coins[1]);
+      }
+    },
+  );
+
+  it.each(SEEDS)(
+    'seed %i: the exit door is in a wall next to reachable floor, one monster has the key',
+    (seed) => {
+      const room = generateLevel(seed);
+      expect(room.door).not.toBeNull();
+      if (!room.door) return;
+      expect(getTile(room.map, room.door)).toBe('wall');
+      const below = { x: room.door.x, y: room.door.y + 1 };
+      expect(getTile(room.map, below)).toBe('floor');
+      expect(findPath(room.map, room.spawn, below)).not.toBeNull();
+      expect(room.monsters.filter((m) => m.key)).toHaveLength(1);
+    },
+  );
 });

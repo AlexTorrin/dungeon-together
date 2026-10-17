@@ -1,16 +1,16 @@
 import Phaser from 'phaser';
 import { posKey, type GameState, type GroundItem, type ItemId } from '@dt/shared';
-import { ITEM_LOOKS } from '../assetKeys';
+import { lootLook } from '../assetKeys';
 import { DEPTH } from '../config';
 import type { UiOverlay } from '../ui/UiOverlay';
 import { tileCenter } from './mapView';
 
 /**
- * Предметы на полу — сверка с state.items, как у акторов (см. ActorLayer).
+ * Вещи на полу (оружие, монеты, ключ) — сверка с state.items, как у акторов (см. ActorLayer).
  * Видны только в клетках, которые сейчас видит команда (туман войны).
  */
 export class ItemLayer {
-  private readonly sprites = new Map<ItemId, Phaser.GameObjects.Image>();
+  private readonly sprites = new Map<ItemId, Phaser.GameObjects.Sprite>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -31,10 +31,12 @@ export class ItemLayer {
     }
   }
 
-  private create(item: GroundItem): Phaser.GameObjects.Image {
-    const look = ITEM_LOOKS[item.type];
-    return this.ui.world(
-      this.scene.add.image(...tileCenter(item.pos), look.texture, look.frame).setDepth(DEPTH.items),
-    );
+  private create(item: GroundItem): Phaser.GameObjects.Sprite {
+    const look = lootLook(item);
+    const sprite = this.scene.add
+      .sprite(...tileCenter(item.pos), look.texture, look.frame)
+      .setDepth(DEPTH.items);
+    if (look.anim) sprite.play(look.anim);
+    return this.ui.world(sprite);
   }
 }

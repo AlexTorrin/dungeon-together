@@ -9,6 +9,7 @@ import {
   type GameEvent,
   type GameState,
   type PlayerId,
+  type Position,
 } from '@dt/shared';
 import type { Look } from '../assetKeys';
 import { BUMP_DURATION_MS, DAMAGE_FLOAT_MS, DEPTH, MOVE_DURATION_MS, ZOOM } from '../config';
@@ -217,19 +218,30 @@ export class ActorLayer {
     this.views.delete(id);
   }
 
-  /**
-   * Цифра урона над актором. Удар считается по позициям после шагов, поэтому всплывает
-   * после анимации шага — там, где спрайт к тому моменту оказался.
-   */
+  /** Цифра урона над актором — там, где спрайт окажется после шага. */
   private floatDamage(id: ActorId, amount: number): void {
     const sprite = this.spriteOf(id);
     if (!sprite?.visible) return; // урон по невидимому — не показываем
+    this.floatText(`-${amount}`, '#ff6b57', () => [sprite.x, sprite.y - 6]);
+  }
+
+  /** Удар пришёлся в пустую клетку — «мимо» над ней (вызывающий проверяет, что клетку видно). */
+  floatMiss(at: Position): void {
+    const [x, y] = tileCenter(at);
+    this.floatText('мимо', '#b89a8c', () => [x, y - 4]);
+  }
+
+  /**
+   * Всплывающая надпись. Удар считается по позициям после шагов, поэтому всплывает после
+   * анимации шага — позицию берём в момент старта.
+   */
+  private floatText(content: string, color: string, at: () => [number, number]): void {
     const text = this.ui.world(
       this.scene.add
-        .text(sprite.x, sprite.y, `-${amount}`, {
+        .text(0, 0, content, {
           fontFamily: 'monospace',
           fontSize: '10px',
-          color: '#ff6b57',
+          color,
           stroke: '#1a0d13',
           strokeThickness: 2,
         })
@@ -244,7 +256,7 @@ export class ActorLayer {
       y: '-=10',
       alpha: { from: 1, to: 0 },
       duration: DAMAGE_FLOAT_MS,
-      onStart: () => text.setPosition(sprite.x, sprite.y - 6).setVisible(true),
+      onStart: () => text.setPosition(...at()).setVisible(true),
       onCompleteExtra: () => text.destroy(),
     });
   }

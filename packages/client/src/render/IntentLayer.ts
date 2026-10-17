@@ -117,10 +117,13 @@ export class IntentLayer {
         g.lineStyle(1, color, alpha);
         g.strokeCircle(fx, fy, HALF - 2);
         return;
+      case 'openDoor':
+      case 'dropKey':
+      case 'dropCoins':
       case 'equip':
       case 'drop': {
         // Взять в руки / выбросить: значок у ног героя (стрелка вверх — в руки, вниз — на пол).
-        const dir = action.type === 'equip' ? -1 : 1;
+        const dir = action.type === 'equip' || action.type === 'openDoor' ? -1 : 1;
         g.lineStyle(1, color, alpha);
         g.strokeRect(fx + 2, fy + 1, 5, 5);
         g.lineBetween(fx + 4.5, fy + 3.5 - dir * 4, fx + 4.5, fy + 3.5 + dir * 1);

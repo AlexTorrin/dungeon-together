@@ -1,10 +1,20 @@
 import { ACTION_POINTS, actionCost } from '../config/turn';
 import { step } from '../direction';
 import { canStep } from '../map/pathfinding';
-import type { Action, Actor, GameMap, Item, Plan } from '../types';
+import { chebyshev } from '../map/geometry';
+import type { Action, Actor, GameState, Item, Plan } from '../types';
 import { canAttack } from './combat';
 
 const WAIT: Action = { type: 'wait' };
+
+/** Что из состояния нужно, чтобы проверить план: карта и дверь. */
+export type World = Pick<GameState, 'map' | 'door'>;
+
+/** Стоит ли актор рядом с закрытой дверью (в т.ч. по диагонали) и есть ли у него ключ. */
+export function canOpenDoor(world: World, actor: Actor): boolean {
+  const { door } = world;
+  return !!door && !door.open && actor.keys > 0 && chebyshev(actor.pos, door.pos) === 1;
+}
 
 /** Как пройдёт план, если всё удастся (без учёта других акторов — их выбор неизвестен). */
 export interface PlanSimulation {
@@ -21,7 +31,8 @@ export interface PlanSimulation {
 }
 
 /** Применяет к ожидаемому состоянию актора одно действие; null — действие невозможно. */
-function applyExpected(map: GameMap, actor: Actor, action: Action): Actor | null {
+function applyExpected(world: World, actor: Actor, action: Action): Actor | null {
+  const { map } = world;
   switch (action.type) {
     case 'move':
       return canStep(map, actor.pos, action.direction)
@@ -39,6 +50,14 @@ function applyExpected(map: GameMap, actor: Actor, action: Action): Actor | null
       if (!actor.backpack.some((i) => i.id === action.itemId)) return null;
       return { ...actor, backpack: actor.backpack.filter((i) => i.id !== action.itemId) };
     }
+    case 'dropCoins':
+      return Number.isInteger(action.amount) && action.amount > 0 && action.amount <= actor.coins
+        ? { ...actor, coins: actor.coins - action.amount }
+        : null;
+    case 'dropKey':
+      return actor.keys > 0 ? { ...actor, keys: actor.keys - 1 } : null;
+    case 'openDoor':
+      return canOpenDoor(world, actor) ? { ...actor, keys: actor.keys - 1 } : null;
     case 'wait':
       return actor;
   }
@@ -55,7 +74,7 @@ export function swapOut(backpack: readonly Item[], item: Item, hands: Item | nul
  * где актор и что у него в руках. Цена удара — по оружию в руках в момент удара.
  * null — план дороже ОД, удар не достаёт или предмета для equip/drop нет.
  */
-export function simulatePlan(map: GameMap, actor: Actor, plan: Plan): PlanSimulation | null {
+export function simulatePlan(world: World, actor: Actor, plan: Plan): PlanSimulation | null {
   const phases: Action[] = [];
   const before: Actor[] = [];
   const phaseOf: number[] = [];
@@ -69,7 +88,7 @@ export function simulatePlan(map: GameMap, actor: Actor, plan: Plan): PlanSimula
     phaseOf.push(phases.length);
     phases.push(action);
     before.push(current);
-    const next = applyExpected(map, current, action);
+    const next = applyExpected(world, current, action);
     if (!next) return null;
     current = next;
   }
@@ -83,6 +102,6 @@ export function simulatePlan(map: GameMap, actor: Actor, plan: Plan): PlanSimula
 }
 
 /** Можно ли отправить план: не пустой, укладывается в ОД, все удары и предметы на месте. */
-export function isPlanValid(map: GameMap, actor: Actor, plan: Plan): boolean {
-  return plan.length > 0 && simulatePlan(map, actor, plan) !== null;
+export function isPlanValid(world: World, actor: Actor, plan: Plan): boolean {
+  return plan.length > 0 && simulatePlan(world, actor, plan) !== null;
 }

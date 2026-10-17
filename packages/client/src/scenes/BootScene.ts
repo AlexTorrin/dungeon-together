@@ -18,6 +18,8 @@ export class BootScene extends Phaser.Scene {
       ASSET_PATHS.bowItem,
       ASSET_PATHS.swordItem,
       ASSET_PATHS.wandItem,
+      ASSET_PATHS.doorClosed,
+      ASSET_PATHS.doorOpen,
     ]) {
       this.load.image(path, path);
     }

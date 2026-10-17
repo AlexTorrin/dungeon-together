@@ -113,7 +113,7 @@ describe('death and items', () => {
     ]);
     const { state: next, events } = turn(state, { p1: hit(2, 1), p2: wait });
     expect(next.actors['p2']).toBeUndefined();
-    expect(next.items['r']).toEqual({ id: 'r', type: 'bow', pos: { x: 2, y: 1 } });
+    expect(next.items['r']).toEqual({ id: 'r', kind: 'weapon', type: 'bow', pos: { x: 2, y: 1 } });
     expect(events).toContainEqual({ type: 'died', actorId: 'p2', at: { x: 2, y: 1 } });
     expect(events).toContainEqual({
       type: 'itemDropped',
@@ -139,8 +139,8 @@ describe('death and items', () => {
       ARENA,
       [playerAt('p1', 1, 1, { weapon: weapon('old', 'knife') })],
       [
-        { id: 'a', type: 'bow', pos: { x: 2, y: 1 } },
-        { id: 'b', type: 'sword', pos: { x: 2, y: 1 } },
+        { id: 'a', kind: 'weapon', type: 'bow', pos: { x: 2, y: 1 } },
+        { id: 'b', kind: 'weapon', type: 'sword', pos: { x: 2, y: 1 } },
       ],
     );
     const { state: next, events } = turn(state, { p1: { type: 'move', direction: 'right' } });

@@ -22,6 +22,8 @@ const player = (id: PlayerId, pos: Position): Actor => ({
   maxHp: PLAYER_MAX_HP,
   weapon: null,
   backpack: [],
+  coins: 0,
+  keys: 0,
 });
 
 /** Состояние с игроками в явно заданных позициях. */
@@ -204,8 +206,8 @@ describe('createGameState', () => {
   it('places monsters and items from the room and keeps players off monster tiles', () => {
     const withMonster: Room = {
       ...room,
-      monsters: [{ species: 'skull', pos: { x: 1, y: 1 } }],
-      items: [{ type: 'knife', pos: { x: 4, y: 1 } }],
+      monsters: [{ species: 'skull', pos: { x: 1, y: 1 }, weapon: null, coins: 0, key: false }],
+      items: [{ kind: 'weapon', type: 'knife', pos: { x: 4, y: 1 } }],
     };
     const state = createGameState(withMonster, ['p1'], SEED);
     expect(state.actors['monster-1']).toEqual({
@@ -217,9 +219,13 @@ describe('createGameState', () => {
       maxHp: 3,
       weapon: null,
       backpack: [],
+      coins: 0,
+      keys: 0,
     });
     expect(state.actors['p1']?.pos).not.toEqual({ x: 1, y: 1 });
-    expect(state.items).toEqual({ 'item-2': { id: 'item-2', type: 'knife', pos: { x: 4, y: 1 } } });
+    expect(state.items).toEqual({
+      'item-2': { id: 'item-2', kind: 'weapon', type: 'knife', pos: { x: 4, y: 1 } },
+    });
     expect(state.nextId).toBe(3);
   });
 
@@ -230,7 +236,10 @@ describe('createGameState', () => {
 
   it('survives a JSON round trip (state can be sent over the network as is)', () => {
     const state = createGameState(
-      { ...room, monsters: [{ species: 'vampire', pos: { x: 4, y: 1 } }] },
+      {
+        ...room,
+        monsters: [{ species: 'vampire', pos: { x: 4, y: 1 }, weapon: null, coins: 0, key: false }],
+      },
       ['p1', 'p2'],
       SEED,
     );

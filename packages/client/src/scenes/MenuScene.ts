@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DEMO_ROOM, generateLevel, type Room } from '@dt/shared';
+import { DEMO_ROOM, DIFFICULTY_LIST, generateLevel, type Difficulty, type Room } from '@dt/shared';
 import { randomSeed } from '../game/randomSeed';
 import { TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import { MapView } from '../render/mapView';
@@ -9,6 +9,12 @@ import { UiOverlay } from '../ui/UiOverlay';
 import { SCENES, type EditorSceneData, type GameSceneData } from './sceneKeys';
 
 const MAX_LISTED_ROOMS = 8;
+
+const DIFFICULTY_NAMES: Readonly<Record<Difficulty, string>> = {
+  easy: 'легко',
+  medium: 'средне',
+  hard: 'трудно',
+};
 
 export class MenuScene extends Phaser.Scene {
   constructor() {
@@ -36,16 +42,23 @@ export class MenuScene extends Phaser.Scene {
     );
     y += 64;
 
-    const dungeon = ui.add(
-      new TextButton(this, 0, 0, '▶ Новое подземелье', () => {
-        const seed = randomSeed();
-        this.play(generateLevel(seed), `Подземелье #${seed}`);
-      }),
+    // Новое подземелье — случайный уровень выбранной сложности.
+    const dungeons = DIFFICULTY_LIST.map((difficulty) =>
+      ui.add(
+        new TextButton(this, 0, 0, `▶ ${DIFFICULTY_NAMES[difficulty]}`, () => {
+          const seed = randomSeed();
+          this.play(
+            generateLevel(seed, difficulty),
+            `Подземелье #${seed} · ${DIFFICULTY_NAMES[difficulty]}`,
+          );
+        }),
+      ),
     );
     const demo = ui.add(
       new TextButton(this, 0, 0, 'Демо-комната', () => this.play(DEMO_ROOM, 'Демо-комната')),
     );
-    layoutRow([dungeon, demo], left, y);
+    ui.text(left, y - 22, 'Новое подземелье:', UI_COLORS.muted);
+    layoutRow([...dungeons, demo], left, y);
     y += 44;
     const editor = ui.add(
       new TextButton(this, 0, 0, '✎ Редактор комнат', () => this.openEditor({})),

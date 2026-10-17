@@ -29,7 +29,7 @@ export function submitPlan(state: GameState, { playerId, plan }: SubmitPlanComma
   });
   if (state.status !== 'playing') return reject('gameOver');
   if (Object.hasOwn(state.pendingPlans, playerId)) return reject('alreadySubmitted');
-  if (!isPlanValid(state.map, player, plan)) return reject('invalidPlan');
+  if (!isPlanValid(state, player, plan)) return reject('invalidPlan');
 
   const next: GameState = {
     ...state,
