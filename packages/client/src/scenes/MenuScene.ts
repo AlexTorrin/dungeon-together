@@ -84,7 +84,10 @@ export class MenuScene extends Phaser.Scene {
     const hub = ui.add(
       new TextButton(this, 0, 0, '⚒ Лагерь: магазин и сундук', () => this.scene.start(SCENES.hub)),
     );
-    layoutRow([hub], left, y);
+    const online = ui.add(
+      new TextButton(this, 0, 0, '⚔ Сетевая игра', () => this.scene.start(SCENES.lobby)),
+    );
+    layoutRow([hub, online], left, y);
     y += 66;
     ui.text(left, y - 22, 'Тренировка — без снаряжения, добыча не сохраняется:', UI_COLORS.muted);
     const editor = ui.add(

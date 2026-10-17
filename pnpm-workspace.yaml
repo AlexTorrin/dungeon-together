@@ -1,2 +1,7 @@
 packages:
   - packages/*
+# Скрипты установки зависимостей не нужны: esbuild (для tsx) работает и без проверки бинарника,
+# msgpackr-extract — необязательное нативное ускорение msgpack у Colyseus.
+allowBuilds:
+  esbuild: false
+  msgpackr-extract: false

@@ -12,6 +12,8 @@
 //   wait:ms                          — пауза
 //   shot:/path.png                   — промежуточный скриншот
 //   dialog:текст                     — ответ на следующий window.prompt (confirm → accept)
+//   page:N                           — переключиться на N-ю вкладку (1 — исходная); новая — отдельный
+//                                      контекст браузера (свой localStorage), т.е. второй игрок
 //   eval:js                          — выполнить JS на странице (напр. подложить localStorage)
 import { chromium } from 'playwright';
 
@@ -25,17 +27,24 @@ const url = process.env.GAME_URL ?? 'http://localhost:5173/';
 const browser = await chromium.launch({
   args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'],
 });
-const page = await browser.newPage({ viewport: { width: 960, height: 640 } });
 const problems = [];
-page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-page.on('console', (m) => m.type() === 'error' && problems.push(`console.error: ${m.text()}`));
-page.on('response', (r) => r.status() >= 400 && problems.push(`HTTP ${r.status()} ${r.url()}`));
-
-await page.goto(url);
-await page.waitForSelector('#game canvas', { timeout: 15000 });
-await page.waitForTimeout(1500); // загрузка ассетов + первые кадры анимации
 let dialogAnswer = '';
-page.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(dialogAnswer) : d.accept()));
+const pages = [];
+async function openPage() {
+  const context = await browser.newContext({ viewport: { width: 960, height: 640 } });
+  const p = await context.newPage();
+  const tag = pages.length ? `[page ${pages.length + 1}] ` : '';
+  p.on('pageerror', (e) => problems.push(`${tag}pageerror: ${e.message}`));
+  p.on('console', (m) => m.type() === 'error' && problems.push(`${tag}console.error: ${m.text()}`));
+  p.on('response', (r) => r.status() >= 400 && problems.push(`${tag}HTTP ${r.status()} ${r.url()}`));
+  p.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(dialogAnswer) : d.accept()));
+  await p.goto(url);
+  await p.waitForSelector('#game canvas', { timeout: 15000 });
+  await p.waitForTimeout(1500); // загрузка ассетов + первые кадры анимации
+  pages.push(p);
+  return p;
+}
+let page = await openPage();
 
 const xy = (s) => s.split(',').map(Number);
 for (const raw of steps) {
@@ -80,6 +89,11 @@ for (const raw of steps) {
     await page.waitForTimeout(Number(arg));
   } else if (cmd === 'shot') {
     await page.screenshot({ path: arg });
+  } else if (cmd === 'page') {
+    const n = Number(arg);
+    while (pages.length < n) await openPage();
+    page = pages[n - 1];
+    await page.bringToFront();
   } else if (cmd === 'eval') {
     await page.evaluate(arg);
   } else if (cmd === 'dialog') {

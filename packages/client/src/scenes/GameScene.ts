@@ -37,6 +37,7 @@ import { ANIMATIONS, lookOf } from '../assetKeys';
 import { INTENT_COLORS, TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import type { GameSession } from '../game/GameSession';
 import { LocalGame } from '../game/LocalGame';
+import type { NetworkGame } from '../game/NetworkGame';
 import { randomSeed } from '../game/randomSeed';
 import { initialAim, moveAim, nextAimTarget } from '../input/aim';
 import { directionFromKeys } from '../input/keyDirection';
@@ -52,7 +53,7 @@ import { WEAPON_NAMES } from '../ui/names';
 import { loadProfile, saveProfile } from '../storage/profileStorage';
 import { SCENES, type GameReturn, type GameSceneData } from './sceneKeys';
 
-/** Игрок за этим компьютером. В сетевой игре id выдаст сервер. */
+/** Игрок за этим компьютером в одиночной игре. В сетевой id выдаёт сервер. */
 const LOCAL_ID: PlayerId = 'p1';
 const LOCAL_LOOK = lookOf(ANIMATIONS.heroIdle);
 
@@ -187,6 +188,14 @@ export class GameScene extends Phaser.Scene {
   private isRun = false;
   /** Когда Esc в забеге нажали первый раз — второй в течение ABANDON_CONFIRM_MS бросает забег. */
   private abandonAskedAt: number | null = null;
+  /** Итог забега сохранён (true), не удалось (false), ещё нет (null). */
+  private runSettled: boolean | null = null;
+  /** Наш игрок: в одиночной игре LOCAL_ID, в сетевой — что выдал сервер. */
+  private myId: PlayerId = LOCAL_ID;
+  /** Имена других игроков (сетевая игра). */
+  private playerNames: Readonly<Record<PlayerId, string>> = {};
+  /** Сетевая сессия — чтобы выйти из комнаты при уходе со сцены. */
+  private net: NetworkGame | null = null;
 
   constructor() {
     super(SCENES.game);
@@ -195,10 +204,22 @@ export class GameScene extends Phaser.Scene {
   init(data: GameSceneData): void {
     this.back = data.back;
     this.title = data.title;
-    this.isRun = data.run !== undefined;
     this.abandonAskedAt = null;
-    const loadouts = data.run ? { [LOCAL_ID]: data.run } : {};
-    this.session = new LocalGame(createGameState(data.room, [LOCAL_ID], randomSeed(), loadouts));
+    this.runSettled = null;
+    if ('net' in data) {
+      this.isRun = true;
+      this.myId = data.net.playerId;
+      this.session = data.net.session;
+      this.playerNames = data.net.names;
+      this.net = data.net.session;
+    } else {
+      this.isRun = data.run !== undefined;
+      this.myId = LOCAL_ID;
+      const loadouts = data.run ? { [LOCAL_ID]: data.run } : {};
+      this.session = new LocalGame(createGameState(data.room, [LOCAL_ID], randomSeed(), loadouts));
+      this.playerNames = {};
+      this.net = null;
+    }
     this.keys = new Map();
     this.draft = [];
     this.sent = null;
@@ -223,7 +244,7 @@ export class GameScene extends Phaser.Scene {
     this.fog = new FogLayer(this, ui);
     this.items = new ItemLayer(this, ui);
     this.intents = new IntentLayer(this, ui);
-    this.actors = new ActorLayer(this, ui, new Map([[LOCAL_ID, LOCAL_LOOK]]), () => this.onIdle());
+    this.actors = new ActorLayer(this, ui, new Map([[this.myId, LOCAL_LOOK]]), () => this.onIdle());
     this.popup = new ActionPopup(this, ui);
     this.rememberNames(state);
     this.visible = teamVision(state);
@@ -242,7 +263,7 @@ export class GameScene extends Phaser.Scene {
         (map.width + 2) * TILE_SIZE,
         (map.height + 2) * TILE_SIZE + hud,
       );
-    const me = this.actors.spriteOf(LOCAL_ID);
+    const me = this.actors.spriteOf(this.myId);
     if (me) camera.startFollow(me, true, 0.15, 0.15);
 
     const backLabel = this.back.to === 'editor' ? 'в редактор' : 'в меню';
@@ -267,6 +288,15 @@ export class GameScene extends Phaser.Scene {
     // События приходят асинхронно — в том числе после выхода из сцены, поэтому отписываемся.
     const unsubscribe = this.session.subscribe((events, next) => this.onEvents(events, next));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribe);
+    const net = this.net;
+    if (net) {
+      // Связь оборвалась — сервер уже считает, что мы ушли: несённое потеряно.
+      net.onDisconnect = () => this.showGameOver('lost', 'Связь с сервером потеряна');
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        net.onDisconnect = null;
+        net.leave();
+      });
+    }
     this.redraw();
   }
 
@@ -687,7 +717,7 @@ export class GameScene extends Phaser.Scene {
     this.draft = [];
     this.goal = null;
     if (this.sent && !this.gameOver) {
-      this.session.send({ type: 'cancelPlan', playerId: LOCAL_ID });
+      this.session.send({ type: 'cancelPlan', playerId: this.myId });
       this.sent = null;
     }
     this.redraw();
@@ -710,7 +740,7 @@ export class GameScene extends Phaser.Scene {
     this.sent = this.draft;
     this.draft = [];
     // Ответ придёт в onEvents через подписку — не сразу, как и по сети.
-    this.session.send({ type: 'submitPlan', playerId: LOCAL_ID, plan: this.sent });
+    this.session.send({ type: 'submitPlan', playerId: this.myId, plan: this.sent });
     this.redraw();
   }
 
@@ -769,7 +799,7 @@ export class GameScene extends Phaser.Scene {
         this.actors.setReady(event.playerId, false);
         break;
       case 'planRejected':
-        if (event.playerId === LOCAL_ID) {
+        if (event.playerId === this.myId) {
           this.sent = null; // план не принят — можно выбирать снова
           this.ui.toast(REJECT_TEXT[event.reason]);
         }
@@ -784,12 +814,22 @@ export class GameScene extends Phaser.Scene {
       case 'phaseResolved':
         this.phase = event.phase + 1;
         break;
+      case 'playerLeft':
+        this.actors.setReady(event.playerId, false);
+        this.log(`${this.names.get(event.playerId) ?? 'игрок'} покинул игру`);
+        this.ui.toast(
+          `${this.names.get(event.playerId) ?? 'Игрок'} покинул игру — его вещи на полу`,
+        );
+        break;
       case 'damaged':
       case 'died':
       case 'itemPickedUp':
       case 'itemEquipped':
       case 'itemDropped':
+        this.logEvent(event);
+        break;
       case 'exited':
+        if (event.actorId === this.myId) this.settleRun();
         this.logEvent(event);
         break;
       case 'doorOpened': {
@@ -825,46 +865,47 @@ export class GameScene extends Phaser.Scene {
       }
     }
     for (const item of Object.values(state.items)) this.names.set(item.id, lootName(item));
-    this.names.set(LOCAL_ID, 'вы');
+    for (const [id, name] of Object.entries(this.playerNames)) this.names.set(id, name);
+    this.names.set(this.myId, 'вы');
   }
 
   /** Строка лога хода — только про героя и тех, кого видно. */
   private logEvent(event: GameEvent): void {
     const name = (id: string): string => this.names.get(id) ?? '?';
     const seen = (id: string): boolean =>
-      id === LOCAL_ID || this.actors.spriteOf(id)?.visible === true;
+      id === this.myId || this.actors.spriteOf(id)?.visible === true;
     switch (event.type) {
       case 'damaged':
-        if (event.by === LOCAL_ID) this.log(`вы попали: ${name(event.actorId)} −${event.amount}`);
-        else if (event.actorId === LOCAL_ID)
+        if (event.by === this.myId) this.log(`вы попали: ${name(event.actorId)} −${event.amount}`);
+        else if (event.actorId === this.myId)
           this.log(`${name(event.by)} попал по вам −${event.amount}`);
         return;
       case 'died':
         if (seen(event.actorId))
-          this.log(event.actorId === LOCAL_ID ? 'вы погибли' : `${name(event.actorId)} убит`);
+          this.log(event.actorId === this.myId ? 'вы погибли' : `${name(event.actorId)} убит`);
         return;
       case 'itemPickedUp':
         if (seen(event.actorId)) {
           const who =
-            event.actorId === LOCAL_ID ? 'вы подобрали' : `${name(event.actorId)} подобрал`;
+            event.actorId === this.myId ? 'вы подобрали' : `${name(event.actorId)} подобрал`;
           this.log(`${who}: ${name(event.itemId)}`);
         }
         return;
       case 'itemEquipped':
         if (seen(event.actorId)) {
           const who =
-            event.actorId === LOCAL_ID ? 'вы взяли в руки' : `${name(event.actorId)} взял в руки`;
+            event.actorId === this.myId ? 'вы взяли в руки' : `${name(event.actorId)} взял в руки`;
           this.log(`${who}: ${name(event.itemId)}`);
         }
         return;
       case 'doorOpened':
-        this.log(event.actorId === LOCAL_ID ? 'вы открыли дверь' : 'дверь открыта');
+        this.log(event.actorId === this.myId ? 'вы открыли дверь' : 'дверь открыта');
         return;
       case 'exited':
-        this.log(event.actorId === LOCAL_ID ? 'вы вышли из подземелья' : 'союзник вышел');
+        this.log(event.actorId === this.myId ? 'вы вышли из подземелья' : 'союзник вышел');
         return;
       case 'itemDropped':
-        if (event.actorId === LOCAL_ID) this.log(`вы выбросили: ${name(event.itemId)}`);
+        if (event.actorId === this.myId) this.log(`вы выбросили: ${name(event.itemId)}`);
         else if (this.visible.has(posKey(event.at))) this.log(`на полу: ${name(event.itemId)}`);
         return;
       default:
@@ -875,7 +916,7 @@ export class GameScene extends Phaser.Scene {
   /** Удар никого не задел: «мимо» над клеткой (если её видно) и запись в лог. */
   private onMiss(attackerId: ActorId, target: Position): void {
     if (this.visible.has(posKey(target))) this.actors.floatMiss(target);
-    if (attackerId === LOCAL_ID) this.log('вы — мимо');
+    if (attackerId === this.myId) this.log('вы — мимо');
     else if (this.actors.spriteOf(attackerId)?.visible) {
       this.log(`${this.names.get(attackerId) ?? '?'} — мимо`);
     }
@@ -913,18 +954,30 @@ export class GameScene extends Phaser.Scene {
     this.redraw();
   }
 
-  private showGameOver(status: 'won' | 'lost'): void {
+  /**
+   * Итог забега — в профиль, ровно один раз: вещи уже убраны из профиля при старте, вынесенное
+   * возвращаем, остальное потеряно. Зовётся при нашем выходе дверью (союзники могут ещё играть,
+   * а мы — уйти из комнаты) и в конце уровня. Возвращает, удалось ли сохранить.
+   */
+  private settleRun(): boolean {
+    if (!this.isRun) return false;
+    if (this.runSettled !== null) return this.runSettled;
+    this.runSettled = saveProfile(finishRun(loadProfile(), this.session.state.escaped[this.myId]));
+    return this.runSettled;
+  }
+
+  private showGameOver(status: 'won' | 'lost', reason?: string): void {
     if (this.gameOver) return; // добычу сохраняем ровно один раз
     this.gameOver = true;
     this.draft = [];
     this.goal = null;
     this.popup.hide();
     const { width, height } = this.scale;
-    const loot = this.session.state.escaped[LOCAL_ID];
-    // Вещи забега уже убраны из профиля при старте: вынесенное возвращаем, остальное потеряно.
-    const saved = this.isRun && saveProfile(finishRun(loadProfile(), loot));
+    const loot = this.session.state.escaped[this.myId];
+    const saved = this.settleRun();
     const title =
-      status === 'lost' ? 'Вы погибли' : loot ? 'Уровень пройден!' : 'Уровень пройден без вас';
+      reason ??
+      (status === 'lost' ? 'Вы погибли' : loot ? 'Уровень пройден!' : 'Уровень пройден без вас');
     this.ui.add(this.add.rectangle(0, 0, width, height, UI_COLORS.panel, 0.6).setOrigin(0));
     this.ui
       .add(
@@ -959,7 +1012,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private me(): Actor | undefined {
-    return this.session.state.actors[LOCAL_ID];
+    return this.session.state.actors[this.myId];
   }
 
   private tileAt(p: Phaser.Input.Pointer): Position | null {
@@ -982,7 +1035,7 @@ export class GameScene extends Phaser.Scene {
     });
     // Путь до цели мыши после последнего шага — чтобы было видно, куда идём дальше.
     const last = intents.at(-1);
-    if (last && last.action.type === 'move' && this.goal && actor.id === LOCAL_ID) {
+    if (last && last.action.type === 'move' && this.goal && actor.id === this.myId) {
       const end = step(last.from, last.action.direction);
       const rest = findPath(this.knownMap(), end, this.goal);
       if (rest) intents[intents.length - 1] = { ...last, path: rest };
@@ -1002,7 +1055,7 @@ export class GameScene extends Phaser.Scene {
       // Подтверждённые планы других игроков видны всем (намерения монстров — нет).
       for (const actor of Object.values(state.actors)) {
         const plan = state.pendingPlans[actor.id];
-        if (actor.id === LOCAL_ID || actor.kind !== 'player' || !plan) continue;
+        if (actor.id === this.myId || actor.kind !== 'player' || !plan) continue;
         intents.push(...this.planIntents(actor, plan, INTENT_COLORS.ally, true));
       }
     }
@@ -1095,8 +1148,10 @@ export class GameScene extends Phaser.Scene {
   /** В забеге выход по Esc — бросить его и потерять несённое, поэтому спрашиваем дважды. */
   private confirmBack(): void {
     const now = this.time.now;
+    // Терять нечего: тренировка, или нас уже нет на уровне (погибли, вышли — ждём союзников).
     if (
       !this.isRun ||
+      !this.me() ||
       (this.abandonAskedAt !== null && now - this.abandonAskedAt < ABANDON_CONFIRM_MS)
     ) {
       this.goBack();

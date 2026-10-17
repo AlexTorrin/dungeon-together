@@ -4,7 +4,12 @@ import type { ActorId, Direction, GameStatus, ItemId, Plan, PlayerId, Position }
 export type Command =
   | { readonly type: 'submitPlan'; readonly playerId: PlayerId; readonly plan: Plan }
   /** Отозвать отправленный план, пока ход не разрешён (передумал). */
-  | { readonly type: 'cancelPlan'; readonly playerId: PlayerId };
+  | { readonly type: 'cancelPlan'; readonly playerId: PlayerId }
+  /**
+   * Игрок покидает игру: отключился или бросил забег. Шлёт не клиент, а сервер (или локальная
+   * сессия) — когда игрок ушёл.
+   */
+  | { readonly type: 'leave'; readonly playerId: PlayerId };
 
 /** Почему план не принят — чтобы клиент не ждал вечно и мог объяснить игроку. */
 export type PlanRejectReason =
@@ -68,6 +73,8 @@ export type GameEvent =
   | { readonly type: 'gameOver'; readonly status: Exclude<GameStatus, 'playing'> }
   /** Дверь-выход открыта ключом — теперь это проход. */
   | { readonly type: 'doorOpened'; readonly actorId: ActorId; readonly at: Position }
+  /** Игрок покинул игру (отключился, бросил забег); всё, что нёс, падает следом — itemDropped. */
+  | { readonly type: 'playerLeft'; readonly playerId: PlayerId; readonly at: Position }
   /** Игрок вышел через открытую дверь и унёс всё, что нёс. */
   | { readonly type: 'exited'; readonly actorId: ActorId; readonly at: Position }
   /** Фаза хода разрешена (1, 2, …): клиент проигрывает фазы по очереди. */

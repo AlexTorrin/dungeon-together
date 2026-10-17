@@ -4,6 +4,7 @@ import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { MenuScene } from './scenes/MenuScene';
 import { HubScene } from './scenes/HubScene';
+import { LobbyScene } from './scenes/LobbyScene';
 import { RoomEditorScene } from './scenes/RoomEditorScene';
 
 const game = new Phaser.Game({
@@ -13,7 +14,7 @@ const game = new Phaser.Game({
   pixelArt: true, // без сглаживания при масштабировании — пиксели остаются чёткими
   roundPixels: true,
   scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
-  scene: [BootScene, MenuScene, HubScene, GameScene, RoomEditorScene],
+  scene: [BootScene, MenuScene, HubScene, LobbyScene, GameScene, RoomEditorScene],
 });
 
 // Для отладки и автоматических проверок (скил run-game): доступ к игре из консоли в dev-режиме.

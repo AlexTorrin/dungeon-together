@@ -1,5 +1,6 @@
 import type { Command, GameEvent } from '../commands';
 import type { GameState } from '../types';
+import { leave } from './leave';
 import { cancelPlan, submitPlan } from './submitPlan';
 
 export interface CommandResult {
@@ -14,5 +15,7 @@ export function applyCommand(state: GameState, command: Command): CommandResult 
       return submitPlan(state, command);
     case 'cancelPlan':
       return cancelPlan(state, command);
+    case 'leave':
+      return leave(state, command);
   }
 }

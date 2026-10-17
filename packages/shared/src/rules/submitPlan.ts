@@ -1,4 +1,4 @@
-import type { Command, PlanRejectReason } from '../commands';
+import type { Command, GameEvent, PlanRejectReason } from '../commands';
 import type { GameState, PlayerActor, PlayerId } from '../types';
 import type { CommandResult } from './applyCommand';
 import { isPlanValid } from './plan';
@@ -8,7 +8,7 @@ type SubmitPlanCommand = Extract<Command, { type: 'submitPlan' }>;
 type CancelPlanCommand = Extract<Command, { type: 'cancelPlan' }>;
 
 /** Игрок с таким id. Object.hasOwn — чтобы id вроде 'constructor' не нашёл ничего в прототипе. */
-function findPlayer(state: GameState, id: PlayerId): PlayerActor | undefined {
+export function findPlayer(state: GameState, id: PlayerId): PlayerActor | undefined {
   if (!Object.hasOwn(state.actors, id)) return undefined;
   const actor = state.actors[id];
   return actor?.kind === 'player' ? actor : undefined;
@@ -35,15 +35,23 @@ export function submitPlan(state: GameState, { playerId, plan }: SubmitPlanComma
     ...state,
     pendingPlans: { ...state.pendingPlans, [playerId]: plan },
   };
-  const submitted = { type: 'planSubmitted', playerId, turn: state.turn } as const;
+  return resolveIfReady(next, [{ type: 'planSubmitted', playerId, turn: state.turn }]);
+}
 
-  const everyoneReady = Object.values(next.actors)
-    .filter((actor) => actor.kind === 'player')
-    .every((player) => Object.hasOwn(next.pendingPlans, player.id));
-  if (!everyoneReady) return { state: next, events: [submitted] };
-
-  const resolved = resolveTurn(next);
-  return { state: resolved.state, events: [submitted, ...resolved.events] };
+/**
+ * Если планы есть у всех игроков на уровне — разрешает ход; events — то, что произошло до этого
+ * (план принят, игрок ушёл). Нужно и после submitPlan, и после leave: ушедший мог быть последним,
+ * кого ждали.
+ */
+export function resolveIfReady(state: GameState, events: readonly GameEvent[]): CommandResult {
+  const players = Object.values(state.actors).filter((actor) => actor.kind === 'player');
+  const everyoneReady =
+    state.status === 'playing' &&
+    players.length > 0 &&
+    players.every((player) => Object.hasOwn(state.pendingPlans, player.id));
+  if (!everyoneReady) return { state, events };
+  const resolved = resolveTurn(state);
+  return { state: resolved.state, events: [...events, ...resolved.events] };
 }
 
 /** Отзывает отправленный план, пока ход не разрешён. Нечего отзывать — молча ничего. */

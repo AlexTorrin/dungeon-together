@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @dt/client dev",
+    "dev": "pnpm --parallel --filter @dt/client --filter @dt/server dev",
     "dev:client": "pnpm --filter @dt/client dev",
+    "dev:server": "pnpm --filter @dt/server dev",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "eslint .",
