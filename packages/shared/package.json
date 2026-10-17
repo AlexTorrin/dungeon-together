@@ -11,5 +11,8 @@
   },
   "devDependencies": {
     "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "rot-js": "2.2.1"
   }
 }

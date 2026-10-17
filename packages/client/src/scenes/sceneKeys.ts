@@ -25,5 +25,7 @@ export type GameReturn =
 
 export interface GameSceneData {
   readonly room: Room;
+  /** Что за уровень — для HUD: «Подземелье #seed», название комнаты. */
+  readonly title: string;
   readonly back: GameReturn;
 }

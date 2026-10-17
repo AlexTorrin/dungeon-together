@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { DEMO_ROOM, type Room } from '@dt/shared';
+import { DEMO_ROOM, generateLevel, type Room } from '@dt/shared';
+import { randomSeed } from '../game/randomSeed';
 import { TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import { MapView } from '../render/mapView';
 import { deleteRoom, loadRooms } from '../storage/roomStorage';
@@ -35,8 +36,16 @@ export class MenuScene extends Phaser.Scene {
     );
     y += 64;
 
-    const play = ui.add(new TextButton(this, 0, 0, '▶ Играть (демо)', () => this.play(DEMO_ROOM)));
-    layoutRow([play], left, y);
+    const dungeon = ui.add(
+      new TextButton(this, 0, 0, '▶ Новое подземелье', () => {
+        const seed = randomSeed();
+        this.play(generateLevel(seed), `Подземелье #${seed}`);
+      }),
+    );
+    const demo = ui.add(
+      new TextButton(this, 0, 0, 'Демо-комната', () => this.play(DEMO_ROOM, 'Демо-комната')),
+    );
+    layoutRow([dungeon, demo], left, y);
     y += 44;
     const editor = ui.add(
       new TextButton(this, 0, 0, '✎ Редактор комнат', () => this.openEditor({})),
@@ -54,7 +63,9 @@ export class MenuScene extends Phaser.Scene {
     y += 28;
     for (const saved of rooms.slice(0, MAX_LISTED_ROOMS)) {
       const label = ui.text(0, 0, saved.name.padEnd(18).slice(0, 18));
-      const playBtn = ui.add(new TextButton(this, 0, 0, 'Играть', () => this.play(saved.room)));
+      const playBtn = ui.add(
+        new TextButton(this, 0, 0, 'Играть', () => this.play(saved.room, saved.name)),
+      );
       const editBtn = ui.add(
         new TextButton(this, 0, 0, 'Изменить', () =>
           this.openEditor({
@@ -83,8 +94,8 @@ export class MenuScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.scale.off('resize', onResize));
   }
 
-  private play(room: Room): void {
-    const data: GameSceneData = { room, back: { to: 'menu' } };
+  private play(room: Room, title: string): void {
+    const data: GameSceneData = { room, title, back: { to: 'menu' } };
     this.scene.start(SCENES.game, data);
   }
 

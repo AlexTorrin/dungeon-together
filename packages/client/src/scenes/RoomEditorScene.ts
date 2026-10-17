@@ -276,6 +276,7 @@ export class RoomEditorScene extends Phaser.Scene {
   private test(): void {
     const data: GameSceneData = {
       room: this.draft.room,
+      title: this.draft.name,
       back: { to: 'editor', draft: this.draft },
     };
     this.scene.start(SCENES.game, data);

@@ -21,6 +21,7 @@ import { ANIMATIONS, lookOf } from '../assetKeys';
 import { INTENT_COLORS, TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import type { GameSession } from '../game/GameSession';
 import { LocalGame } from '../game/LocalGame';
+import { randomSeed } from '../game/randomSeed';
 import { initialAim, moveAim, nextAimTarget } from '../input/aim';
 import { directionFromKeys } from '../input/keyDirection';
 import { ActorLayer } from '../render/ActorLayer';
@@ -66,14 +67,6 @@ const HUD_HEIGHT = 88;
 
 const WEAPON_NAMES = { none: 'кулаки', melee: 'ближнее', ranged: 'дальнее' } as const;
 
-/**
- * Seed для новой локальной игры. Случайность берётся здесь, в клиенте: shared детерминирован
- * и получает seed готовым. В сетевой игре seed будет выбирать сервер.
- */
-function randomSeed(): number {
-  return crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
-}
-
 function describe(action: Action): string {
   switch (action.type) {
     case 'move':
@@ -100,6 +93,7 @@ export class GameScene extends Phaser.Scene {
   private session!: GameSession;
   private ui!: UiOverlay;
   private back!: GameReturn;
+  private title = '';
   private actors!: ActorLayer;
   private items!: ItemLayer;
   private intents!: IntentLayer;
@@ -124,6 +118,7 @@ export class GameScene extends Phaser.Scene {
 
   init(data: GameSceneData): void {
     this.back = data.back;
+    this.title = data.title;
     this.session = new LocalGame(createGameState(data.room, [LOCAL_ID], randomSeed()));
     this.keys = new Map();
     this.draft = null;
@@ -533,7 +528,7 @@ export class GameScene extends Phaser.Scene {
     }
     const weapon = WEAPON_NAMES[me.weapon?.type ?? 'none'];
     const { range, damage } = weaponOf(me);
-    const head = `Ход ${turn} · HP ${me.hp}/${me.maxHp} · Оружие: ${weapon} (урон ${damage}, дальность ${range})`;
+    const head = `${this.title} · Ход ${turn} · HP ${me.hp}/${me.maxHp} · Оружие: ${weapon} (урон ${damage}, дальность ${range})`;
     const choice = this.sent
       ? `Выбрано: ${describe(this.sent)} ✓ — ждём остальных`
       : this.aim

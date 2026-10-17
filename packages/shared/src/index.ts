@@ -45,6 +45,7 @@ export {
   setRoomSpawn,
 } from './map/room';
 export { DEMO_ROOM } from './map/demoMap';
+export { generateLevel } from './map/generateLevel';
 export { DIRECTIONS, delta, directionTo, isDiagonal, isDirection, step } from './direction';
 export { chebyshev, hasLineOfSight, lineCells, posKey, samePos } from './map/geometry';
 export { canStep, findPath } from './map/pathfinding';
