@@ -62,7 +62,7 @@ function randomSeed(): number {
 
 /**
  * Игровая сцена. Ходы одновременные: каждый локальный игрок выбирает действие,
- * сцена отправляет его в session и ждёт. Когда выбрали все, session возвращает события
+ * сцена отправляет его в session и ждёт. Когда выбрали все, по подписке приходят события
  * разрешённого хода — их анимации проигрываются одновременно, и только потом
  * принимается ввод на следующий ход.
  */
@@ -73,6 +73,12 @@ export class GameScene extends Phaser.Scene {
   private keys = new Map<KeyCode, Phaser.Input.Keyboard.Key>();
   private sprites = new Map<ActorId, Phaser.GameObjects.Sprite>();
   private readyMarks = new Map<PlayerId, Phaser.GameObjects.Text>();
+  /**
+   * Кто из локальных игроков уже отправил действие в этом ходу. Хранится в сцене, а не
+   * берётся из state.pendingActions: по сети состояние догонит отправку с задержкой,
+   * и без этого флага игрок успел бы отправить действие несколько раз.
+   */
+  private submitted = new Set<PlayerId>();
   private status!: Phaser.GameObjects.Text;
   /** Сколько анимаций хода ещё идёт; пока > 0, ввод не принимается. */
   private runningAnimations = 0;
@@ -94,6 +100,7 @@ export class GameScene extends Phaser.Scene {
     this.keys = new Map();
     this.sprites = new Map();
     this.readyMarks = new Map();
+    this.submitted = new Set();
     this.runningAnimations = 0;
   }
 
@@ -143,18 +150,21 @@ export class GameScene extends Phaser.Scene {
 
     this.registerKeys();
     this.input.keyboard?.on('keydown-ESC', () => this.goBack());
+
+    // События приходят асинхронно — в том числе после выхода из сцены, поэтому отписываемся.
+    const unsubscribe = this.session.subscribe((events) => this.handleEvents(events));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribe);
   }
 
   override update(): void {
     if (this.runningAnimations > 0) return;
     for (const local of this.localPlayers) {
-      if (this.session.state.pendingActions[local.id]) continue; // уже выбрал — ждёт остальных
+      if (this.submitted.has(local.id)) continue; // уже выбрал — ждёт остальных
       const action = this.readAction(local);
       if (!action) continue;
-      this.handleEvents(
-        this.session.dispatch({ type: 'submitAction', playerId: local.id, action }),
-      );
-      if (this.runningAnimations > 0) return; // ход разрешился — остальной ввод после анимаций
+      this.submitted.add(local.id);
+      // Ответ придёт в handleEvents через подписку — не сразу, как и по сети.
+      this.session.send({ type: 'submitAction', playerId: local.id, action });
     }
   }
 
@@ -193,7 +203,7 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- События → анимации ----------
 
-  /** Превращает события логики в анимации. Сама логика уже применена в session. */
+  /** Превращает события логики в анимации. Сама логика уже применена в session, state свежий. */
   private handleEvents(events: readonly GameEvent[]): void {
     for (const event of events) {
       switch (event.type) {
@@ -226,6 +236,7 @@ export class GameScene extends Phaser.Scene {
           break;
         case 'turnResolved':
           for (const mark of this.readyMarks.values()) mark.setVisible(false);
+          this.submitted.clear();
           break;
       }
     }
