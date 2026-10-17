@@ -23,6 +23,7 @@ packages/
 assets/     # спрайты, тайлсеты (2D Pixel Dungeon Asset Pack v2.0), отдаются клиенту как статика
 docs/       # architecture.md — как всё устроено; assets.md — что лежит в assets/ и что где используется
 .claude/skills/run-game/  # запуск игры и скриншоты в headless-браузере для проверки изменений
+.claude/{agents,commands,rules/ecc,skills}/  # выборка из affaan-m/everything-claude-code @76aaa77, без хуков
 ```
 
 Прежде чем менять код, загляни в `docs/architecture.md` — там описаны поток данных,
