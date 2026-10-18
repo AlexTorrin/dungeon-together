@@ -38,6 +38,8 @@ export function reconnectRoom(reconnectionToken: string): Promise<Room> {
 export function connectionError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/not found/i.test(message)) return 'Комнаты с таким кодом нет (или игра в ней уже идёт)';
+  if (/не годится/.test(message))
+    return 'Сервер не принял комнату: нет старта или она больше 64×64';
   if (/locked|full/i.test(message)) return 'В комнату нельзя войти: она полна или игра уже идёт';
   return `Нет связи с сервером ${serverUrl()} — запущен ли он (pnpm dev:server)?`;
 }

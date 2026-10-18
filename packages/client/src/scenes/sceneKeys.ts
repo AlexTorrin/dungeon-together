@@ -48,6 +48,8 @@ export interface NetGameData extends GameSceneBase {
     readonly playerId: PlayerId;
     /** Имена игроков из лобби — для лога хода. */
     readonly names: Readonly<Record<PlayerId, string>>;
+    /** Своя комната: профиль не трогается, как в тренировке в браузере. */
+    readonly practice: boolean;
   };
 }
 

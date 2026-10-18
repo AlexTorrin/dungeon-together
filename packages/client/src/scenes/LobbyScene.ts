@@ -4,6 +4,7 @@ import {
   DIFFICULTY_LIST,
   MAX_PLAYERS,
   parseRoomCode,
+  serializeRoom,
   type Difficulty,
   type JoinOptions,
 } from '@dt/shared';
@@ -12,10 +13,14 @@ import { Lobby } from '../net/Lobby';
 import { connectionError, createRoom, joinRoom } from '../net/connection';
 import { loadPlayerName, savePlayerName } from '../storage/playerName';
 import { playerToken } from '../storage/playerToken';
+import { loadRooms } from '../storage/roomStorage';
 import { DIFFICULTY_NAMES } from '../ui/names';
 import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
 import { SCENES, type GameSceneData } from './sceneKeys';
+
+const MAX_LISTED_ROOMS = 6;
+const ROOMS_PER_ROW = 3;
 
 export interface LobbySceneData {
   /** Уже подключены (сцена перерисовывается через restart). */
@@ -115,9 +120,40 @@ export class LobbyScene extends Phaser.Scene {
     );
     layoutRow(create, left, y);
     y += 52;
+    y = this.drawCustomRooms(left, y);
     const join = this.ui.add(new TextButton(this, 0, 0, 'Войти по коду', () => this.askCode()));
     const back = this.ui.add(new TextButton(this, 0, 0, '← в меню (Esc)', () => this.goBack()));
     layoutRow([join, back], left, y);
+  }
+
+  /** Свои комнаты из редактора: в сети они — тренировка, как и в одиночку. */
+  private drawCustomRooms(left: number, y: number): number {
+    const rooms = loadRooms();
+    if (rooms.length === 0) return y;
+    this.ui.text(
+      left,
+      y,
+      'Своя комната — тренировка: без снаряжения, добыча не сохраняется:',
+      UI_COLORS.muted,
+    );
+    y += 24;
+    const buttons = rooms.slice(0, MAX_LISTED_ROOMS).map((saved) =>
+      this.ui.add(
+        new TextButton(this, 0, 0, saved.name, () =>
+          this.connect(() =>
+            createRoom({
+              custom: { name: saved.name, ascii: serializeRoom(saved.room) },
+              ...this.joinOptions(),
+            }),
+          ),
+        ),
+      ),
+    );
+    for (let i = 0; i < buttons.length; i += ROOMS_PER_ROW) {
+      layoutRow(buttons.slice(i, i + ROOMS_PER_ROW), left, y);
+      y += 40;
+    }
+    return y + 12;
   }
 
   /** Токен — по нему сервер найдёт профиль: возьмёт снаряжение и вернёт добычу. */
@@ -186,7 +222,15 @@ export class LobbyScene extends Phaser.Scene {
       }),
     );
     y += 56;
-    this.ui.text(left, y, `Сложность: ${DIFFICULTY_NAMES[info.difficulty]}`, UI_COLORS.muted);
+    const level = info.level;
+    this.ui.text(
+      left,
+      y,
+      level.kind === 'custom'
+        ? `Своя комната: ${level.name} — тренировка, профиль не меняется`
+        : `Сложность: ${DIFFICULTY_NAMES[level.difficulty]}`,
+      UI_COLORS.muted,
+    );
     y += 30;
     this.ui.text(left, y, `Игроки (${info.players.length}/${MAX_PLAYERS}):`, UI_COLORS.muted);
     y += 24;
@@ -246,7 +290,12 @@ export class LobbyScene extends Phaser.Scene {
     const data: GameSceneData = {
       title: started.title,
       back: { to: 'menu' },
-      net: { session: started.session, playerId: info.you, names },
+      net: {
+        session: started.session,
+        playerId: info.you,
+        names,
+        practice: info.level.kind === 'custom',
+      },
     };
     this.lobby = null; // комната теперь у GameScene — при уходе отсюда не выходить из неё
     this.scene.start(SCENES.game, data);

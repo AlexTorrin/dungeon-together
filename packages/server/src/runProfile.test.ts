@@ -16,12 +16,14 @@ const ROOM = `
 `;
 const PORT = 25890 + Math.floor(Math.random() * 100);
 const TOKEN = 'run-profile-token-000';
+const PRACTICE_TOKEN = 'practice-token-000000';
 let server: Server;
 let store: ProfileStore;
 
 beforeAll(async () => {
   store = new ProfileStore(join(mkdtempSync(join(tmpdir(), 'dt-')), 'profiles.json'));
   await store.set(TOKEN, { coins: 1, hands: 'bow', backpack: [], chest: ['wand'] });
+  await store.set(PRACTICE_TOKEN, { coins: 5, hands: 'knife', backpack: [], chest: [] });
   server = createServer(store, { level: () => parseRoom(ROOM) });
   await server.listen(PORT);
 });
@@ -60,5 +62,41 @@ describe('забег и профиль на сервере', () => {
 
     expect(store.get(TOKEN)).toEqual({ coins: 2, hands: 'bow', backpack: [], chest: ['wand'] });
     await room.leave();
+  });
+
+  it('своя комната — тренировка: без снаряжения, вынесенное в профиль не попадает', async () => {
+    // Сам уровень — из опций создания, а не из подменённого генератора сервера.
+    const custom = { name: 'Арена', ascii: ROOM };
+    const room = await new Client(`http://localhost:${PORT}`).create(ROOM_NAME, {
+      custom,
+      token: PRACTICE_TOKEN,
+    });
+    expect((await next(room, 'lobby')).level).toEqual({ kind: 'custom', name: 'Арена' });
+    const started = next(room, 'started');
+    room.send('start', null);
+    const { state, title } = await started;
+    expect(title).toBe('Арена · тренировка');
+    expect(state.actors['p1']).toMatchObject({ weapon: null, backpack: [] });
+
+    await turn(room, [{ type: 'move', direction: 'right' }]);
+    await turn(room, [{ type: 'openDoor' }, { type: 'move', direction: 'right' }]);
+    const { events, state: after } = await turn(room, [{ type: 'move', direction: 'up' }]);
+    expect(events).toContainEqual({ type: 'gameOver', status: 'won' });
+    expect(after.escaped['p1']).toMatchObject({ coins: 1 });
+    expect(store.get(PRACTICE_TOKEN)).toEqual({
+      coins: 5,
+      hands: 'knife',
+      backpack: [],
+      chest: [],
+    });
+    await room.leave();
+  });
+
+  it('негодную свою комнату не создать', async () => {
+    const create = new Client(`http://localhost:${PORT}`).create(ROOM_NAME, {
+      custom: { name: 'Без старта', ascii: '#..#' },
+      token: PRACTICE_TOKEN,
+    });
+    await expect(create).rejects.toThrow();
   });
 });

@@ -211,7 +211,7 @@ export class GameScene extends Phaser.Scene {
     this.abandonAskedAt = null;
     this.offlineBanner = null;
     if ('net' in data) {
-      this.isRun = true;
+      this.isRun = !data.net.practice;
       this.myId = data.net.playerId;
       this.session = data.net.session;
       this.playerNames = data.net.names;

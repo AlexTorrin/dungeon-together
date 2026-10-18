@@ -1,3 +1,4 @@
+import { MAX_CUSTOM_ROOM_SIZE } from '@dt/shared';
 export const TILE_SIZE = 16;
 export const ZOOM = 3;
 export const BACKGROUND_COLOR = '#25131a';
@@ -34,7 +35,8 @@ export const EDITOR = {
   defaultWidth: 16,
   defaultHeight: 12,
   minSize: 3,
-  maxSize: 64,
+  /** Больше сервер не примет в сетевой игре. */
+  maxSize: MAX_CUSTOM_ROOM_SIZE,
 } as const;
 
 export const UI_COLORS = {

@@ -11,11 +11,13 @@ import {
   finishRun,
   parseJoinOptions,
   startRun,
-  type CreateOptions,
   type Difficulty,
   type Room as RoomLayout,
   type GameState,
   type JoinOptions,
+  type LevelChoice,
+  type Loadout,
+  type LobbyLevel,
   type PlayerId,
   type ServerMessages,
 } from '@dt/shared';
@@ -38,12 +40,14 @@ const DIFFICULTY_TITLES = { easy: 'легко', medium: 'средне', hard: '�
  *
  * Профили: при старте снаряжение забирается из профиля (startRun), вынесенное возвращается
  * в профиль сразу, как игрок вышел дверью или уровень пройден (finishRun). Клиенту не верим.
+ * Своя комната из редактора — тренировка: профили не трогаем (иначе нарисовал сто монет — и
+ * вынес их).
  */
 export abstract class DungeonRoom extends Room {
   /** Откуда брать снаряжение и куда возвращать добычу; задаёт createServer. */
   protected abstract readonly profiles: ProfileStore;
   override maxClients = MAX_PLAYERS;
-  private options: CreateOptions = parseCreateOptions(undefined);
+  private choice: LevelChoice = { kind: 'dungeon', difficulty: 'medium' };
   /** sessionId → место игрока. Порядок вставки — порядок входа (первый — хост). */
   private readonly seats = new Map<string, Seat>();
   private game: GameState | null = null;
@@ -54,7 +58,9 @@ export abstract class DungeonRoom extends Room {
   private readonly settled = new Set<PlayerId>();
 
   override async onCreate(raw: unknown): Promise<void> {
-    this.options = parseCreateOptions(raw);
+    const choice = parseCreateOptions(raw);
+    if (!choice) throw new Error('Своя комната не годится для игры');
+    this.choice = choice;
     this.roomId = await uniqueRoomCode();
     this.onMessage('start', (client) => this.start(client));
     this.onMessage('command', (client, message: unknown) => this.command(client, message));
@@ -104,10 +110,25 @@ export abstract class DungeonRoom extends Room {
   private start(client: Client): void {
     if (this.game || this.hostSession() !== client.sessionId) return;
     const seed = randomInt(2 ** 32);
-    const { difficulty } = this.options;
     const seats = [...this.seats.values()];
-    // Снаряжение уходит из профиля сейчас: погиб или ушёл — его больше нет.
-    const loadouts = Object.fromEntries(
+    const playerIds = seats.map((s) => s.playerId);
+    const { choice } = this;
+    if (choice.kind === 'custom') {
+      this.game = createGameState(choice.room, playerIds, seed);
+      this.title = `${choice.name} · тренировка`;
+    } else {
+      const { difficulty } = choice;
+      const loadouts = this.takeLoadouts(seats);
+      this.game = createGameState(this.level(seed, difficulty), playerIds, seed, loadouts);
+      this.title = `Подземелье #${seed} · ${DIFFICULTY_TITLES[difficulty]}`;
+    }
+    void this.lock();
+    this.broadcastTyped('started', { state: this.game, title: this.title });
+  }
+
+  /** Снаряжение уходит из профиля сейчас: погиб или ушёл — его больше нет. */
+  private takeLoadouts(seats: readonly Seat[]): Record<PlayerId, Loadout> {
+    return Object.fromEntries(
       seats.map(({ playerId, token }) => {
         const { profile, loadout } = startRun(this.profiles.get(token));
         void this.profiles.set(token, profile);
@@ -115,15 +136,6 @@ export abstract class DungeonRoom extends Room {
         return [playerId, loadout];
       }),
     );
-    this.game = createGameState(
-      this.level(seed, difficulty),
-      seats.map((s) => s.playerId),
-      seed,
-      loadouts,
-    );
-    void this.lock();
-    this.title = `Подземелье #${seed} · ${DIFFICULTY_TITLES[difficulty]}`;
-    this.broadcastTyped('started', { state: this.game, title: this.title });
   }
 
   /** Команда от клиента: разбираем как недоверенные данные, playerId — тот, кто прислал. */
@@ -147,7 +159,10 @@ export abstract class DungeonRoom extends Room {
     return generateLevel(seed, difficulty);
   }
 
-  /** Вышедшим дверью (и всем живым при победе) — вынесенное в профиль, ровно один раз. */
+  /**
+   * Вышедшим дверью (и всем живым при победе) — вынесенное в профиль, ровно один раз.
+   * В тренировке runTokens пуст — профили не меняются.
+   */
   private settleEscaped(state: GameState): void {
     for (const [playerId, carried] of Object.entries(state.escaped)) {
       const token = this.runTokens.get(playerId);
@@ -179,12 +194,19 @@ export abstract class DungeonRoom extends Room {
     if (!you) return;
     const lobby: ServerMessages['lobby'] = {
       code: this.roomId,
-      difficulty: this.options.difficulty,
+      level: this.lobbyLevel(),
       players: [...this.seats.values()].map(({ playerId, name }) => ({ playerId, name })),
       host: this.seats.get(this.hostSession() ?? '')?.playerId ?? '',
       you,
     };
     client.send('lobby', lobby);
+  }
+
+  private lobbyLevel(): LobbyLevel {
+    const { choice } = this;
+    return choice.kind === 'custom'
+      ? { kind: 'custom', name: choice.name }
+      : { kind: 'dungeon', difficulty: choice.difficulty };
   }
 
   /** Всем в комнате; тип сообщения и его содержимое сверяются с протоколом из shared. */

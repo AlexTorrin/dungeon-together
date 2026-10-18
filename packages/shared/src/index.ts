@@ -96,6 +96,8 @@ export {
   ROOM_CODE_LENGTH,
   PROFILE_ACTION_PATH,
   PROFILE_PATH,
+  MAX_CUSTOM_ROOM_SIZE,
+  MAX_ROOM_NAME_LENGTH,
   RECONNECT_SECONDS,
   ROOM_NAME,
   parseCreateOptions,
@@ -105,6 +107,8 @@ export {
   type ClientMessages,
   type CreateOptions,
   type JoinOptions,
+  type LevelChoice,
+  type LobbyLevel,
   type LobbyPlayer,
   type ServerMessages,
 } from './net/protocol';

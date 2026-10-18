@@ -1,11 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import { parseCreateOptions, parseJoinOptions, parseName, parseRoomCode } from './protocol';
+import {
+  MAX_CUSTOM_ROOM_SIZE,
+  parseCreateOptions,
+  parseJoinOptions,
+  parseName,
+  parseRoomCode,
+} from './protocol';
 
 describe('protocol: разбор недоверенных данных', () => {
   it('сложность — только известная, иначе средняя', () => {
-    expect(parseCreateOptions({ difficulty: 'hard' })).toEqual({ difficulty: 'hard' });
-    expect(parseCreateOptions({ difficulty: 'toString' })).toEqual({ difficulty: 'medium' });
-    expect(parseCreateOptions(null)).toEqual({ difficulty: 'medium' });
+    const dungeon = { kind: 'dungeon' };
+    expect(parseCreateOptions({ difficulty: 'hard' })).toEqual({ ...dungeon, difficulty: 'hard' });
+    expect(parseCreateOptions({ difficulty: 'toString' })).toEqual({
+      ...dungeon,
+      difficulty: 'medium',
+    });
+    expect(parseCreateOptions(null)).toEqual({ ...dungeon, difficulty: 'medium' });
+  });
+
+  it('своя комната — из ASCII, с названием', () => {
+    const choice = parseCreateOptions({
+      custom: { name: '  Арена  ', ascii: '#####\n#@.S#\n#####' },
+    });
+    expect(choice).toMatchObject({ kind: 'custom', name: 'Арена' });
+    if (choice?.kind !== 'custom') throw new Error('ожидали свою комнату');
+    expect(choice.room.spawn).toEqual({ x: 1, y: 1 });
+    expect(choice.room.monsters).toHaveLength(1);
+    expect(parseCreateOptions({ custom: { ascii: '#@#' } })).toMatchObject({
+      name: 'Своя комната',
+    });
+  });
+
+  it('негодная своя комната — null, а не подземелье по умолчанию', () => {
+    expect(parseCreateOptions({ custom: { name: 'x', ascii: '#..#' } })).toBeNull(); // нет старта
+    expect(parseCreateOptions({ custom: { ascii: '#@?#' } })).toBeNull(); // чужой символ
+    expect(parseCreateOptions({ custom: { ascii: 42 } })).toBeNull();
+    expect(parseCreateOptions({ custom: 'room' })).toBeNull();
+    const wide = `@${'.'.repeat(MAX_CUSTOM_ROOM_SIZE)}`;
+    expect(parseCreateOptions({ custom: { ascii: wide } })).toBeNull();
+    const tall = ['@', ...Array.from({ length: MAX_CUSTOM_ROOM_SIZE }, () => '.')].join('\n');
+    expect(parseCreateOptions({ custom: { ascii: tall } })).toBeNull();
   });
 
   it('имя обрезается, пустое — «Игрок»', () => {

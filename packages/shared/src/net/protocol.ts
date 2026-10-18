@@ -1,7 +1,8 @@
 import type { Command, GameEvent } from '../commands';
 import { DIFFICULTIES, type Difficulty } from '../config/level';
 import { parseToken } from '../hub/actions';
-import type { GameState, PlayerId } from '../types';
+import { isRoomPlayable, parseRoom } from '../map/room';
+import type { GameState, PlayerId, Room } from '../types';
 
 /**
  * Протокол между клиентом и сервером (Colyseus-комната `dungeon`). Только типы и разбор
@@ -22,10 +23,30 @@ export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
  */
 export const RECONNECT_SECONDS = 30;
 
-/** Опции при создании комнаты (хост). */
-export interface CreateOptions {
-  readonly difficulty: Difficulty;
-}
+/** Своя комната из редактора не больше этого по каждой стороне. */
+export const MAX_CUSTOM_ROOM_SIZE = 64;
+export const MAX_ROOM_NAME_LENGTH = 24;
+
+/**
+ * Опции при создании комнаты (хост): подземелье выбранной сложности или своя комната из
+ * редактора — в том же ASCII-формате, в каком она хранится в браузере.
+ */
+export type CreateOptions =
+  | { readonly difficulty: Difficulty }
+  | { readonly custom: { readonly name: string; readonly ascii: string } };
+
+/**
+ * Что за уровень в комнате (уже разобранные опции создания). Своя комната — тренировка:
+ * без снаряжения из лагеря, и добыча в профиль не попадает.
+ */
+export type LevelChoice =
+  | { readonly kind: 'dungeon'; readonly difficulty: Difficulty }
+  | { readonly kind: 'custom'; readonly name: string; readonly room: Room };
+
+/** Уровень для лобби: своя комната — только название, карту игроки увидят в игре. */
+export type LobbyLevel =
+  | { readonly kind: 'dungeon'; readonly difficulty: Difficulty }
+  | { readonly kind: 'custom'; readonly name: string };
 
 /** Опции при входе в комнату (каждый игрок). */
 export interface JoinOptions {
@@ -58,7 +79,7 @@ export interface ServerMessages {
   /** Кто в комнате; приходит при каждом изменении состава, пока игра не началась. */
   readonly lobby: {
     readonly code: string;
-    readonly difficulty: Difficulty;
+    readonly level: LobbyLevel;
     readonly players: readonly LobbyPlayer[];
     readonly host: PlayerId;
     /** Кто вы — у каждого клиента своё. */
@@ -86,14 +107,45 @@ const isObject = (value: unknown): value is Fields =>
 const field = (obj: Fields, name: string): unknown =>
   Object.hasOwn(obj, name) ? obj[name] : undefined;
 
-export function parseCreateOptions(raw: unknown): CreateOptions {
+/**
+ * Опции создания: неизвестная сложность — средняя; своя комната, которая не разбирается или
+ * в которую нельзя войти, — null (создавать нечего).
+ */
+export function parseCreateOptions(raw: unknown): LevelChoice | null {
+  const custom = isObject(raw) ? field(raw, 'custom') : undefined;
+  if (custom !== undefined) return parseCustomRoom(custom);
   const difficulty = isObject(raw) ? field(raw, 'difficulty') : undefined;
   return {
+    kind: 'dungeon',
     difficulty:
       typeof difficulty === 'string' && Object.hasOwn(DIFFICULTIES, difficulty)
         ? (difficulty as Difficulty)
         : 'medium',
   };
+}
+
+function parseCustomRoom(raw: unknown): LevelChoice | null {
+  if (!isObject(raw)) return null;
+  const ascii = field(raw, 'ascii');
+  // Каждая строка — не длиннее стороны плюс перевод строки: огромное до разбора не пускаем.
+  const maxLength = (MAX_CUSTOM_ROOM_SIZE + 1) * MAX_CUSTOM_ROOM_SIZE;
+  if (typeof ascii !== 'string' || ascii.length > maxLength) return null;
+  let room: Room;
+  try {
+    room = parseRoom(ascii);
+  } catch {
+    return null;
+  }
+  const { width, height } = room.map;
+  if (width > MAX_CUSTOM_ROOM_SIZE || height > MAX_CUSTOM_ROOM_SIZE) return null;
+  if (!isRoomPlayable(room)) return null;
+  return { kind: 'custom', name: parseRoomName(field(raw, 'name')), room };
+}
+
+/** Название своей комнаты: как имя игрока, пустое — «Своя комната». */
+function parseRoomName(raw: unknown): string {
+  const name = typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim() : '';
+  return name.slice(0, MAX_ROOM_NAME_LENGTH) || 'Своя комната';
 }
 
 /** Имя: обрезаем пробелы и длину; пустое — «Игрок». */
