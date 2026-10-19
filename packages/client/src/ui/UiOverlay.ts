@@ -8,6 +8,8 @@ import { UI_COLORS } from '../config';
  */
 export class UiOverlay {
   readonly camera: Phaser.Cameras.Scene2D.Camera;
+  /** На какой высоте от низа экрана всплывают тосты (выше нижней панели HUD, если она есть). */
+  toastMargin = 40;
 
   constructor(private readonly scene: Phaser.Scene) {
     this.camera = scene.cameras.add(0, 0, scene.scale.width, scene.scale.height);
@@ -50,7 +52,7 @@ export class UiOverlay {
     const { width, height } = this.scene.scale;
     const t = this.add(
       this.scene.add
-        .text(width / 2, height - 40, message, {
+        .text(width / 2, height - this.toastMargin, message, {
           fontFamily: 'monospace',
           fontSize: '16px',
           color: UI_COLORS.text,

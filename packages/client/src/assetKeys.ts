@@ -1,4 +1,4 @@
-import type { ArmorType, Loot, WeaponType } from '@dt/shared';
+import type { ArmorType, ItemType, Loot, WeaponType } from '@dt/shared';
 
 /** Ключи текстур/анимаций и пути к файлам в assets/. */
 export const TEXTURES = {
@@ -132,6 +132,11 @@ export const ITEM_LOOKS: Readonly<Record<WeaponType | ArmorType, StaticLook>> = 
   leather: { texture: ASSET_PATHS.leatherItem },
   mail: { texture: ASSET_PATHS.mailItem },
 };
+
+/** Текстура предмета для иконки в интерфейсе (первый кадр, если вещь анимирована). */
+export function itemTexture(type: ItemType): string {
+  return type === 'potion' ? firstFrame(ANIMATIONS.potion) : ITEM_LOOKS[type].texture;
+}
 
 /** Как выглядит вещь на полу: оружие и броня — свой спрайт, баночка, монеты и ключ — анимация из пака. */
 export function lootLook(loot: Loot): StaticLook & { readonly anim?: string } {

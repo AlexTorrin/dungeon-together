@@ -2,21 +2,16 @@ import Phaser from 'phaser';
 import {
   RECONNECT_SECONDS,
   ACTION_POINTS,
-  BACKPACK_SIZE,
   attackableCells,
   canAttack,
   canOpenDoor,
   createGameState,
   isPlanValid,
   simulatePlan,
-  WEAPONS,
-  UNARMED,
   ARMORS,
   carriedItems,
   isArmor,
-  type ArmorItem,
   type GroundItem,
-  type WeaponItem,
   POTION,
   potionHeal,
   type PlanSimulation,
@@ -55,6 +50,7 @@ import { IntentLayer, type Intent } from '../render/IntentLayer';
 import { ItemLayer } from '../render/ItemLayer';
 import { MapView } from '../render/mapView';
 import { ActionPopup, type PopupOption } from '../ui/ActionPopup';
+import { HUD_BOTTOM, HUD_TOP, Hud } from '../ui/Hud';
 import { UiOverlay } from '../ui/UiOverlay';
 import { ITEM_NAMES } from '../ui/names';
 import { SCENES, type GameReturn, type GameSceneData } from './sceneKeys';
@@ -78,6 +74,7 @@ const KEYS = {
   attack: [K.SHIFT],
   aim: [K.F],
   nextTarget: [K.TAB],
+  help: [K.H],
   back: [K.ESC],
 } as const;
 type KeyRole = keyof typeof KEYS;
@@ -92,9 +89,6 @@ const ARROWS: Readonly<Record<Direction, string>> = {
   downLeft: '↙',
   downRight: '↘',
 };
-
-/** Высота панели подсказок и статуса сверху экрана. */
-const HUD_HEIGHT = 124;
 
 const WAIT: Action = { type: 'wait' };
 /** Второй клик по той же клетке быстрее этого — двойной клик. */
@@ -135,19 +129,6 @@ function lootName(item: GroundItem): string {
   }
 }
 
-/** Оружие в руках: название и характеристики для HUD. */
-function weaponLabel(item: WeaponItem | null): string {
-  const { damage, range, cost } = item ? WEAPONS[item.type] : UNARMED;
-  return `${ITEM_NAMES[item?.type ?? 'none']} (урон ${damage}, дальн. ${range}, удар ${cost} ОД)`;
-}
-
-/** Надетая броня: название и защита для HUD. */
-function armorLabel(item: ArmorItem | null): string {
-  return item
-    ? `${ITEM_NAMES[item.type]} (−${ARMORS[item.type].defense} урона)`
-    : ITEM_NAMES.noArmor;
-}
-
 /**
  * Игровая сцена. Ход локального игрока — план из ACTION_POINTS действий (по одному на фазу),
  * собирается в два этапа (паттерн «черновик → подтверждение»):
@@ -176,7 +157,7 @@ export class GameScene extends Phaser.Scene {
   private visible: ReadonlySet<string> = new Set();
   private intents!: IntentLayer;
   private popup!: ActionPopup;
-  private status!: Phaser.GameObjects.Text;
+  private hud!: Hud;
   private keys = new Map<number, Phaser.Input.Keyboard.Key>();
 
   /** Выбрано, но не подтверждено: действия по фазам, 0..ACTION_POINTS. */
@@ -282,35 +263,23 @@ export class GameScene extends Phaser.Scene {
     this.actors.sync(state, this.visible);
 
     const { map } = state;
-    // Сверху запас на высоту HUD, чтобы верхний ряд карты можно было увидеть из-под панели.
-    const hud = HUD_HEIGHT / ZOOM;
+    // Запас сверху и снизу на панели HUD, чтобы крайние ряды карты можно было увидеть из-под них.
+    const top = HUD_TOP / ZOOM;
+    const bottom = HUD_BOTTOM / ZOOM;
     this.cameras.main
       .setZoom(ZOOM)
       .setBounds(
         -TILE_SIZE,
-        -TILE_SIZE - hud,
+        -TILE_SIZE - top,
         (map.width + 2) * TILE_SIZE,
-        (map.height + 2) * TILE_SIZE + hud,
+        (map.height + 2) * TILE_SIZE + top + bottom,
       );
     this.updateCamera();
 
     const backLabel = this.back.to === 'editor' ? 'в редактор' : 'в меню';
-    // Подложка под подсказки и статус, чтобы текст не терялся на фоне карты.
-    ui.add(this.add.rectangle(0, 0, 4096, HUD_HEIGHT, UI_COLORS.panel, 0.85).setOrigin(0));
-    ui.text(
-      12,
-      10,
-      'Ход — 2 ОД · WASD — шаг · Shift+WASD — удар · F — прицел · Пробел — ждать · ' +
-        '1–4 — в руки / надеть · Q — выбросить · E — открыть дверь',
-      UI_COLORS.muted,
-    );
-    ui.text(
-      12,
-      28,
-      `Клик — меню действий, двойной клик — сразу ход · Enter — подтвердить · ПКМ/Esc — очистить план · Esc — ${backLabel}`,
-      UI_COLORS.muted,
-    );
-    this.status = ui.text(12, 50, '');
+    this.hud = new Hud(this, ui, backLabel, (slot) => {
+      if (this.canChoose()) this.chooseItem(slot, 'equip');
+    });
 
     this.registerInput();
     // События приходят асинхронно — в том числе после выхода из сцены, поэтому отписываемся.
@@ -393,6 +362,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onKey(code: number): void {
+    if (this.is('help', code) || (this.hud.helpOpen && this.is('back', code))) {
+      this.hud.toggleHelp();
+      return;
+    }
     if (this.is('back', code)) {
       const nothingPlanned =
         !this.popup.isOpen && this.draft.length === 0 && !this.aim && !this.sent;
@@ -838,7 +811,7 @@ export class GameScene extends Phaser.Scene {
     const { width } = this.scale;
     this.offlineBanner = this.ui.add(
       this.add
-        .text(width / 2, HUD_HEIGHT + 12, 'Связь пропала — переподключаемся…', {
+        .text(width / 2, HUD_TOP + 12, 'Связь пропала — переподключаемся…', {
           fontFamily: 'monospace',
           fontSize: '16px',
           color: UI_COLORS.text,
@@ -1102,14 +1075,13 @@ export class GameScene extends Phaser.Scene {
     this.redraw();
   }
 
-  /** Строка статуса, когда своего героя на уровне нет: за кем смотрим и как переключиться. */
+  /** Строка выбора, когда своего героя на уровне нет: за кем смотрим и как переключиться. */
   private spectatorLine(): string {
-    const gone = this.session.state.escaped[this.myId] ? 'Вы вышли из подземелья' : 'Вы погибли';
     const target = this.watching ? this.session.state.actors[this.watching] : undefined;
-    if (!target) return gone;
+    if (!target) return 'Ждём конца уровня · Esc — выйти';
     const name = this.names.get(target.id) ?? 'союзник';
     const next = this.allies().length > 1 ? ' · Tab — следующий союзник' : '';
-    return `${gone} — смотрите за: ${name} (HP ${target.hp}/${target.maxHp})${next} · Esc — в меню`;
+    return `Смотрите за: ${name}${next} · Esc — выйти`;
   }
 
   private showGameOver(status: 'won' | 'lost', reason?: string): void {
@@ -1269,35 +1241,47 @@ export class GameScene extends Phaser.Scene {
 
   private refreshStatus(): void {
     const me = this.me();
-    const { turn } = this.session.state;
-    if (!me) {
-      this.status.setText(
-        `${this.title} · Ход ${turn}\n${this.spectatorLine()}\n\n${this.lastLog}`,
-      );
-      return;
-    }
-    const head = `${this.title} · Ход ${turn} · HP ${me.hp}/${me.maxHp}`;
-    const slots = Array.from({ length: BACKPACK_SIZE }, (_, i) => {
-      const item = me.backpack[i];
-      return `${i + 1}) ${item ? ITEM_NAMES[item.type] : '—'}`;
-    }).join(' ');
-    const inventory =
-      `Руки: ${weaponLabel(me.weapon)} · Броня: ${armorLabel(me.armor)} · Рюкзак: ${slots} · ` +
-      `Монеты: ${me.coins}` +
-      (me.keys > 0 ? ' · Ключ ⚿' : '');
+    const { turn, actors } = this.session.state;
+    const watched = this.watching ? actors[this.watching] : undefined;
+    const health = me ?? watched;
+    this.hud.update({
+      title: this.title,
+      turn,
+      health: health
+        ? {
+            name: me ? null : (this.names.get(health.id) ?? 'союзник'),
+            hp: health.hp,
+            maxHp: health.maxHp,
+          }
+        : null,
+      prompt: me ? this.choiceLine() : this.spectatorLine(),
+      log: this.lastLog,
+      inventory: me
+        ? {
+            weapon: me.weapon,
+            armor: me.armor,
+            backpack: me.backpack,
+            coins: me.coins,
+            keys: me.keys,
+          }
+        : null,
+      banner: this.session.state.escaped[this.myId] ? 'Вы вышли из подземелья' : 'Вы погибли',
+    });
+  }
+
+  /** Что сейчас выбирается: подсказка, план в работе или отправленный план. */
+  private choiceLine(): string {
     const used = this.simulate(this.draft)?.used ?? 0;
-    const choice = this.sent
-      ? `План: ${this.describePlan(this.sent)} ✓ — ждём остальных`
-      : this.aim
-        ? `Прицел: WASD — двигать, Tab — следующая цель, Enter — ударить, F/Esc — выйти${
-            this.draft[this.slot()] ? '' : ' (сюда не ударить)'
-          }`
-        : this.draft.length === 0
-          ? `Выберите действие (ОД: ${ACTION_POINTS})`
-          : used < ACTION_POINTS
-            ? `План: ${this.describePlan(this.draft)} — ещё ${ACTION_POINTS - used} ОД или Enter (остаток — ждать)`
-            : `План: ${this.describePlan(this.draft)} — Enter, чтобы подтвердить`;
-    this.status.setText(`${head}\n${inventory}\n${choice}\n${this.lastLog}`);
+    if (this.sent) return `План: ${this.describePlan(this.sent)} ✓ — ждём остальных`;
+    if (this.aim) {
+      const blocked = this.draft[this.slot()] ? '' : ' (сюда не ударить)';
+      return `Прицел: WASD — двигать, Tab — следующая цель, Enter — ударить, F/Esc — выйти${blocked}`;
+    }
+    if (this.draft.length === 0) return `Выберите действие (ОД: ${ACTION_POINTS})`;
+    const plan = `План: ${this.describePlan(this.draft)}`;
+    return used < ACTION_POINTS
+      ? `${plan} — ещё ${ACTION_POINTS - used} ОД или Enter (остаток — ждать)`
+      : `${plan} — Enter, чтобы подтвердить`;
   }
 
   /** В забеге выход по Esc — бросить его и потерять несённое, поэтому спрашиваем дважды. */
