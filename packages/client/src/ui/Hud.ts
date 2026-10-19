@@ -1,16 +1,15 @@
 import Phaser from 'phaser';
-import {
-  ARMORS,
-  BACKPACK_SIZE,
-  UNARMED,
-  WEAPONS,
-  type ArmorItem,
-  type Item,
-  type WeaponItem,
-} from '@dt/shared';
+import { BACKPACK_SIZE, type ArmorItem, type Item, type WeaponItem } from '@dt/shared';
 import { ANIMATIONS, firstFrame, itemTexture } from '../assetKeys';
 import { UI_COLORS } from '../config';
-import { ITEM_NAMES } from './names';
+import {
+  KEY_TOOLTIP,
+  armorTooltip,
+  backpackTooltip,
+  coinsTooltip,
+  handsTooltip,
+} from './itemTooltips';
+import { Tooltip } from './Tooltip';
 import type { UiOverlay } from './UiOverlay';
 
 /** Высота верхней панели (заголовок, HP, план, лог) и нижней (инвентарь), в экранных пикселях. */
@@ -83,6 +82,9 @@ export interface HudView {
   readonly banner: string;
 }
 
+/** Над чем курсор в нижней панели: ячейка (0 — руки, 1 — броня, 2… — рюкзак), монеты, ключ. */
+type Hovered = number | 'coins' | 'key';
+
 interface Slot {
   readonly box: Phaser.GameObjects.Rectangle;
   readonly icon: Phaser.GameObjects.Image;
@@ -109,7 +111,8 @@ export class Hud {
   private readonly coinIcon: Phaser.GameObjects.Image;
   private readonly coins: Phaser.GameObjects.Text;
   private readonly keyIcon: Phaser.GameObjects.Image;
-  private readonly stats: Phaser.GameObjects.Text;
+  private readonly tooltip: Tooltip;
+  private hovered: Hovered | null = null;
   private readonly banner: Phaser.GameObjects.Text;
   private readonly help: Phaser.GameObjects.Container;
   private view: HudView | null = null;
@@ -159,13 +162,12 @@ export class Hud {
           .setOrigin(0)
           .setStrokeStyle(1, SLOT_COLORS.border),
       );
+      // Все ячейки показывают тултип; по ячейкам рюкзака ещё и кликают (как 1–4).
       const backpackIndex = index - 2;
-      if (backpackIndex >= 0) {
-        box.setInteractive({ useHandCursor: true });
-        box.on('pointerover', () => box.setStrokeStyle(2, SLOT_COLORS.hover));
-        box.on('pointerout', () => box.setStrokeStyle(1, SLOT_COLORS.border));
-        box.on('pointerdown', () => onBackpackSlot(backpackIndex));
-      }
+      box.setInteractive({ useHandCursor: backpackIndex >= 0 });
+      this.hoverable(box, index, () => box.setStrokeStyle(2, SLOT_COLORS.hover));
+      box.on('pointerout', () => box.setStrokeStyle(1, SLOT_COLORS.border));
+      if (backpackIndex >= 0) box.on('pointerdown', () => onBackpackSlot(backpackIndex));
       return {
         box,
         icon: ui.add(scene.add.image(0, 0, itemTexture('knife')).setScale(ICON_SCALE)),
@@ -182,7 +184,9 @@ export class Hud {
     this.coinIcon = ui.add(scene.add.image(0, 0, firstFrame(ANIMATIONS.coin)).setScale(ICON_SCALE));
     this.coins = ui.text(0, 0, '').setOrigin(0, 0.5);
     this.keyIcon = ui.add(scene.add.image(0, 0, firstFrame(ANIMATIONS.key)).setScale(ICON_SCALE));
-    this.stats = ui.text(0, 0, '', UI_COLORS.muted).setOrigin(0, 0.5);
+    this.hoverable(this.coinIcon.setInteractive(), 'coins');
+    this.hoverable(this.keyIcon.setInteractive(), 'key');
+    this.tooltip = new Tooltip(scene, ui);
     this.banner = ui.text(0, 0, '').setOrigin(0.5);
 
     const style = { fontFamily: 'monospace', fontSize: '14px', lineSpacing: 6 } as const;
@@ -212,6 +216,40 @@ export class Hud {
     scene.scale.on('resize', onResize);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.scale.off('resize', onResize));
     this.layout();
+  }
+
+  /** Наведение на объект панели — тултип про него, увели курсор — убрать. */
+  private hoverable(
+    object: Phaser.GameObjects.GameObject,
+    what: Hovered,
+    onOver?: () => void,
+  ): void {
+    object.on('pointerover', () => {
+      onOver?.();
+      this.hovered = what;
+      this.showTooltip();
+    });
+    object.on('pointerout', () => {
+      if (this.hovered === what) this.hovered = null;
+      this.showTooltip();
+    });
+  }
+
+  /** Тултип про то, над чем курсор; содержимое берём из последнего HudView. */
+  private showTooltip(): void {
+    const inventory = this.view?.inventory;
+    const hovered = this.hovered;
+    if (!inventory || hovered === null) {
+      this.tooltip.hide();
+      return;
+    }
+    if (hovered === 'coins')
+      this.tooltip.show(coinsTooltip(inventory.coins), this.coinIcon.getBounds());
+    else if (hovered === 'key') this.tooltip.show(KEY_TOOLTIP, this.keyIcon.getBounds());
+    else {
+      const slot = this.slots[hovered];
+      if (slot) this.tooltip.show(slotTooltip(inventory, hovered), slot.box.getBounds());
+    }
   }
 
   toggleHelp(): void {
@@ -261,8 +299,8 @@ export class Hud {
     this.coinIcon.setVisible(!!inventory);
     this.coins.setVisible(!!inventory);
     this.keyIcon.setVisible(!!inventory && inventory.keys > 0);
-    this.stats.setVisible(!!inventory);
     if (inventory) this.layoutInventory(inventory, slotsY);
+    this.showTooltip(); // предмет под курсором мог смениться (подобрали, надели)
   }
 
   private layoutHealth(health: HudHealth | null, x: number): void {
@@ -304,17 +342,12 @@ export class Hud {
     this.coins.setText(`${inventory.coins}`).setPosition(x + 22, mid);
     x += 22 + this.coins.width + 14;
     this.keyIcon.setPosition(x + 8, mid);
-    if (inventory.keys > 0) x += 30;
-    this.stats.setText(statsLine(inventory)).setPosition(x + 6, mid);
   }
 }
 
-/** Что в руках и что надето — характеристиками: «нож: урон 3 · дальн. 1 · 1 ОД  ·  кожанка −1». */
-function statsLine({ weapon, armor }: HudInventory): string {
-  const { damage, range, cost } = weapon ? WEAPONS[weapon.type] : UNARMED;
-  const hands = `${ITEM_NAMES[weapon?.type ?? 'none']}: урон ${damage} · дальн. ${range} · ${cost} ОД`;
-  const worn = armor
-    ? `${ITEM_NAMES[armor.type]}: −${ARMORS[armor.type].defense} урона`
-    : 'без брони';
-  return `${hands}\n${worn}`;
+/** Тултип ячейки: 0 — руки, 1 — броня, дальше — рюкзак. */
+function slotTooltip(inventory: HudInventory, index: number): string {
+  if (index === 0) return handsTooltip(inventory.weapon?.type ?? null);
+  if (index === 1) return armorTooltip(inventory.armor?.type ?? null);
+  return backpackTooltip(inventory.backpack[index - 2] ?? null, index - 1);
 }

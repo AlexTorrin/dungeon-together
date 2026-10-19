@@ -126,5 +126,5 @@ export {
 } from './hub/actions';
 export { POTION, potionHeal } from './config/potion';
 export { carriedItems, inHands, isArmor, isArmorType, isWeapon, onGround } from './items';
-export { ARMORS, ARMOR_TYPES, damageThrough } from './config/armor';
+export { ARMORS, ARMOR_TYPES, MIN_DAMAGE, damageThrough } from './config/armor';
 export { PLAYER_MAX_HP } from './config/actors';
