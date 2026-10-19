@@ -10,6 +10,7 @@ import { deleteRoom, loadRooms } from '../storage/roomStorage';
 import { DIFFICULTY_NAMES, ITEM_NAMES } from '../ui/names';
 import { TextButton, layoutRow } from '../ui/TextButton';
 import { UiOverlay } from '../ui/UiOverlay';
+import type { HubSceneData } from './HubScene';
 import type { LobbySceneData } from './LobbyScene';
 import { SCENES, type EditorSceneData, type GameSceneData } from './sceneKeys';
 
@@ -71,11 +72,17 @@ export class MenuScene extends Phaser.Scene {
         if (summary.active) summary.setText(`Профиль: ${profileErrorText(error)}`);
       });
     y += 28;
+    // Данные — всегда явно, даже пустые: без них Phaser отдаёт сцене данные прошлого запуска
+    // (старый профиль в лагере, лобби с уже сыгранной игрой).
+    const hubData: HubSceneData = {};
+    const lobbyData: LobbySceneData = {};
     const hub = ui.add(
-      new TextButton(this, 0, 0, '⚒ Лагерь: магазин и сундук', () => this.scene.start(SCENES.hub)),
+      new TextButton(this, 0, 0, '⚒ Лагерь: магазин и сундук', () =>
+        this.scene.start(SCENES.hub, hubData),
+      ),
     );
     const online = ui.add(
-      new TextButton(this, 0, 0, '⚔ Сетевая игра', () => this.scene.start(SCENES.lobby)),
+      new TextButton(this, 0, 0, '⚔ Сетевая игра', () => this.scene.start(SCENES.lobby, lobbyData)),
     );
     const resume = rememberedRoom();
     const back = resume

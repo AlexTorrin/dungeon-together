@@ -199,6 +199,10 @@ export class GameScene extends Phaser.Scene {
   private lastClick: { readonly tile: Position; readonly at: number } | null = null;
   /** Курсор прицела с клавиатуры (F); null — прицел выключен. */
   private aim: Position | null = null;
+  /** За каким игроком следит камера: свой герой, а без него (погиб, вышел) — союзник. */
+  private watching: PlayerId | null = null;
+  /** Спрайт, за которым камера следит сейчас, — чтобы не перезапускать слежение каждый ход. */
+  private followed: Phaser.GameObjects.Sprite | null = null;
   private gameOver = false;
   /** Забег на сервере (а не тренировка): снаряжение из профиля, бросить — значит потерять. */
   private isRun = false;
@@ -246,6 +250,8 @@ export class GameScene extends Phaser.Scene {
     this.goal = null;
     this.hover = null;
     this.aim = null;
+    this.watching = null;
+    this.followed = null;
     this.gameOver = false;
   }
 
@@ -278,7 +284,7 @@ export class GameScene extends Phaser.Scene {
     const { map } = state;
     // Сверху запас на высоту HUD, чтобы верхний ряд карты можно было увидеть из-под панели.
     const hud = HUD_HEIGHT / ZOOM;
-    const camera = this.cameras.main
+    this.cameras.main
       .setZoom(ZOOM)
       .setBounds(
         -TILE_SIZE,
@@ -286,8 +292,7 @@ export class GameScene extends Phaser.Scene {
         (map.width + 2) * TILE_SIZE,
         (map.height + 2) * TILE_SIZE + hud,
       );
-    const me = this.actors.spriteOf(this.myId);
-    if (me) camera.startFollow(me, true, 0.15, 0.15);
+    this.updateCamera();
 
     const backLabel = this.back.to === 'editor' ? 'в редактор' : 'в меню';
     // Подложка под подсказки и статус, чтобы текст не терялся на фоне карты.
@@ -321,8 +326,8 @@ export class GameScene extends Phaser.Scene {
         const name = this.names.get(playerId) ?? 'Игрок';
         this.ui.toast(
           online
-            ? `${name} вернулся`
-            : `${name} потерял связь — ждём до ${RECONNECT_SECONDS} с, потом он покинет уровень`,
+            ? `${name}: связь восстановлена`
+            : `${name}: связь пропала — ждём до ${RECONNECT_SECONDS} с, потом игрок покинет уровень`,
         );
       };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -394,6 +399,10 @@ export class GameScene extends Phaser.Scene {
       if (this.gameOver) this.goBack();
       else if (nothingPlanned) this.confirmBack();
       else this.clearPlan();
+      return;
+    }
+    if (this.is('nextTarget', code) && !this.me() && !this.gameOver) {
+      this.watchNext();
       return;
     }
     if (!this.canChoose()) return;
@@ -855,6 +864,7 @@ export class GameScene extends Phaser.Scene {
     this.items.sync(next, this.visible);
     this.actors.clearReady();
     for (const id of Object.keys(next.pendingPlans)) this.actors.setReady(id, true);
+    this.updateCamera();
     // Наш план либо дошёл до сервера (он в pendingPlans), либо нет — тогда выбираем заново.
     this.sent = Object.hasOwn(next.pendingPlans, this.myId)
       ? (next.pendingPlans[this.myId] ?? null)
@@ -917,9 +927,9 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'playerLeft':
         this.actors.setReady(event.playerId, false);
-        this.log(`${this.names.get(event.playerId) ?? 'игрок'} покинул игру`);
+        this.log(`${this.names.get(event.playerId) ?? 'игрок'} — выход из игры`);
         this.ui.toast(
-          `${this.names.get(event.playerId) ?? 'Игрок'} покинул игру — его вещи на полу`,
+          `${this.names.get(event.playerId) ?? 'Игрок'} выходит из игры — вещи остались на полу`,
         );
         break;
       case 'damaged':
@@ -1053,8 +1063,53 @@ export class GameScene extends Phaser.Scene {
     const { state } = this.session;
     this.actors.sync(state, this.visible);
     this.items.sync(state, this.visible);
+    this.updateCamera();
     this.continueToGoal();
     this.redraw();
+  }
+
+  // ---------- Камера ----------
+
+  /** Живые союзники (другие игроки на уровне) в постоянном порядке — для Tab. */
+  private allies(): PlayerId[] {
+    return Object.values(this.session.state.actors)
+      .filter((a) => a.kind === 'player' && a.id !== this.myId)
+      .map((a) => a.id)
+      .sort();
+  }
+
+  /**
+   * Камера следит за своим героем; погиб или вышел дверью — за союзником, пока уровень идёт:
+   * за выбранным по Tab, а если его уже нет — за первым живым.
+   */
+  private updateCamera(): void {
+    const { actors } = this.session.state;
+    if (actors[this.myId]) this.watching = this.myId;
+    else if (!this.watching || !actors[this.watching]) this.watching = this.allies()[0] ?? null;
+    const sprite = this.watching ? this.actors.spriteOf(this.watching) : undefined;
+    if (!sprite || sprite === this.followed) return;
+    this.cameras.main.startFollow(sprite, true, 0.15, 0.15);
+    this.followed = sprite;
+  }
+
+  /** Tab без своего героя: следить за следующим союзником. */
+  private watchNext(): void {
+    const allies = this.allies();
+    if (allies.length === 0) return;
+    const index = allies.indexOf(this.watching ?? '');
+    this.watching = allies[(index + 1) % allies.length] ?? null;
+    this.updateCamera();
+    this.redraw();
+  }
+
+  /** Строка статуса, когда своего героя на уровне нет: за кем смотрим и как переключиться. */
+  private spectatorLine(): string {
+    const gone = this.session.state.escaped[this.myId] ? 'Вы вышли из подземелья' : 'Вы погибли';
+    const target = this.watching ? this.session.state.actors[this.watching] : undefined;
+    if (!target) return gone;
+    const name = this.names.get(target.id) ?? 'союзник';
+    const next = this.allies().length > 1 ? ' · Tab — следующий союзник' : '';
+    return `${gone} — смотрите за: ${name} (HP ${target.hp}/${target.maxHp})${next} · Esc — в меню`;
   }
 
   private showGameOver(status: 'won' | 'lost', reason?: string): void {
@@ -1216,7 +1271,9 @@ export class GameScene extends Phaser.Scene {
     const me = this.me();
     const { turn } = this.session.state;
     if (!me) {
-      this.status.setText(`Ход ${turn}`);
+      this.status.setText(
+        `${this.title} · Ход ${turn}\n${this.spectatorLine()}\n\n${this.lastLog}`,
+      );
       return;
     }
     const head = `${this.title} · Ход ${turn} · HP ${me.hp}/${me.maxHp}`;

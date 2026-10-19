@@ -101,9 +101,8 @@ export class HubScene extends Phaser.Scene {
     }
     this.ui.text(left, top + 44, `Кошелёк: ${profile.coins} мон.`);
 
-    let y = top + 84;
     // При узком экране колонки встают друг под другом.
-    const shopY = y;
+    const shopY = top + 84;
     const shopEnd = this.drawShop(profile, col(0), shopY);
     const gearY = columns > 1 ? shopY : shopEnd + 24;
     const gearEnd = this.drawGear(profile, col(1), gearY);
