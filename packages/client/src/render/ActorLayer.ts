@@ -15,6 +15,7 @@ import type { Look } from '../assetKeys';
 import { BUMP_DURATION_MS, DAMAGE_FLOAT_MS, DEPTH, MOVE_DURATION_MS, ZOOM } from '../config';
 import type { UiOverlay } from '../ui/UiOverlay';
 import { lookOfActor } from './actorLooks';
+import { CombatFx, HIT_MS } from './combatFx';
 import { tileCenter } from './mapView';
 
 /** Смещение отметки «готов» от центра спрайта — в правый верхний угол клетки. */
@@ -22,7 +23,6 @@ const MARK_OFFSET = { x: 5, y: -10 } as const;
 /** На сколько пикселей актор «дёргается» в сторону препятствия при неудачном шаге. */
 const BUMP_OFFSET = 4;
 const HP_BAR = { width: 12, height: 2, offsetY: 9 } as const;
-const DEATH_FADE_MS = 250;
 const HP_COLORS = { player: 0x8fdc6a, monster: 0xe0503a, back: 0x1a0d13 } as const;
 /** Подпись с именем: низ подписи — столько пикселей над центром спрайта (выше отметки «готов»). */
 const NAME_OFFSET_Y = -12;
@@ -58,6 +58,15 @@ export class ActorLayer {
   private running = 0;
   /** Клетки, которые сейчас видит команда (posKey). Монстров вне их не показываем. */
   private visible: ReadonlySet<string> = new Set();
+  /** Последнее состояние — чем бьёт атакующий (стрела или заряд палочки). */
+  private state: GameState | null = null;
+  /**
+   * Когда (мс от начала фазы) удар атакующего достигает цели и когда попали по актору: по
+   * ним урон, «мимо» и гибель показываются в момент попадания, а не сразу после шагов.
+   */
+  private readonly impactAt = new Map<ActorId, number>();
+  private readonly hitAt = new Map<ActorId, number>();
+  private readonly fx: CombatFx;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -66,7 +75,9 @@ export class ActorLayer {
     /** Вызывается, когда закончилась последняя анимация. */
     private readonly onIdle: () => void,
     private readonly labels: PlayerLabels | null = null,
-  ) {}
+  ) {
+    this.fx = new CombatFx(scene, ui, (config) => this.animate(config));
+  }
 
   /** Идут ли анимации хода (пока да — ввод не принимается). */
   get busy(): boolean {
@@ -82,6 +93,7 @@ export class ActorLayer {
    * показывает/прячет по туману войны. Двигают спрайты события (play), выравнивает — sync.
    */
   prepare(state: GameState, visible: ReadonlySet<string>): void {
+    this.state = state;
     this.visible = visible;
     for (const actor of Object.values(state.actors)) {
       if (!this.views.has(actor.id)) this.add(actor);
@@ -98,6 +110,8 @@ export class ActorLayer {
     this.prepare(state, visible);
     if (this.busy) return;
 
+    this.impactAt.clear();
+    this.hitAt.clear();
     for (const [id, view] of this.views) {
       const actor = state.actors[id];
       if (!actor) {
@@ -157,30 +171,45 @@ export class ActorLayer {
         return;
       }
       case 'attacked': {
-        // Анимаций ударов пока нет — только разворот в сторону цели.
+        // Удар — после шагов фазы: разворот к цели, выпад или выстрел.
         const sprite = this.spriteOf(event.actorId);
+        const target = tileCenter(event.target);
+        let impact = MOVE_DURATION_MS;
         if (sprite) {
-          const dx = tileCenter(event.target)[0] - sprite.x;
+          const dx = target[0] - sprite.x;
           if (dx !== 0) sprite.setFlipX(dx < 0);
+          const weapon = this.state?.actors[event.actorId]?.weapon?.type ?? null;
+          if (sprite.visible) impact = this.fx.strike(sprite, target, weapon, MOVE_DURATION_MS);
         }
+        this.impactAt.set(event.actorId, impact);
+        return;
+      }
+      case 'damaged': {
+        const at = this.impactDelay(event.by);
+        this.hitAt.set(event.actorId, at);
+        const sprite = this.spriteOf(event.actorId);
+        if (!sprite?.visible) return; // урон по невидимому — не показываем
+        const attacker = this.spriteOf(event.by);
+        this.fx.hit(sprite, attacker ? [attacker.x, attacker.y] : null, at);
+        // Полоска HP падает в момент попадания (у погибшего актора в состоянии уже нет — 0).
+        const maxHp = this.state?.actors[event.actorId]?.maxHp;
+        const ratio = maxHp ? Math.max(0, event.hp) / maxHp : 0;
+        const fill = this.views.get(event.actorId)?.hpFill;
+        this.scene.time.delayedCall(at, () => fill?.setSize(HP_BAR.width * ratio, HP_BAR.height));
+        this.floatText(`-${event.amount}`, '#ff6b57', at, () => [sprite.x, sprite.y - 6]);
         return;
       }
       case 'died': {
-        // Погибший гаснет после того, как всплывёт урон; убирает спрайт сверка в конце хода.
+        // Погибший гаснет после вспышки попадания; убирает спрайт сверка в конце хода.
         const view = this.views.get(event.actorId);
-        if (view?.sprite.visible) {
-          this.animate({
-            targets: view.label ? [view.sprite, view.label] : view.sprite,
-            alpha: 0,
-            delay: MOVE_DURATION_MS,
-            duration: DEATH_FADE_MS,
-          });
-        }
+        if (view?.sprite.visible)
+          this.fx.death(
+            view.sprite,
+            [view.hpBack, view.hpFill, ...(view.label ? [view.label] : [])],
+            this.hitDelay(event.actorId) + HIT_MS,
+          );
         return;
       }
-      case 'damaged':
-        this.floatDamage(event.actorId, event.amount);
-        return;
       default:
         return;
     }
@@ -256,24 +285,32 @@ export class ActorLayer {
     this.views.delete(id);
   }
 
-  /** Цифра урона над актором — там, где спрайт окажется после шага. */
-  private floatDamage(id: ActorId, amount: number): void {
-    const sprite = this.spriteOf(id);
-    if (!sprite?.visible) return; // урон по невидимому — не показываем
-    this.floatText(`-${amount}`, '#ff6b57', () => [sprite.x, sprite.y - 6]);
+  /** Через сколько мс от начала фазы удар этого атакующего достиг цели. */
+  impactDelay(attackerId: ActorId): number {
+    return this.impactAt.get(attackerId) ?? MOVE_DURATION_MS;
+  }
+
+  /** Через сколько мс от начала фазы по актору попали (для тряски камеры и гибели). */
+  hitDelay(id: ActorId): number {
+    return this.hitAt.get(id) ?? MOVE_DURATION_MS;
   }
 
   /** Удар пришёлся в пустую клетку — «мимо» над ней (вызывающий проверяет, что клетку видно). */
-  floatMiss(at: Position): void {
+  floatMiss(at: Position, attackerId: ActorId): void {
     const [x, y] = tileCenter(at);
-    this.floatText('мимо', '#b89a8c', () => [x, y - 4]);
+    this.floatText('мимо', '#b89a8c', this.impactDelay(attackerId), () => [x, y - 4]);
   }
 
   /**
-   * Всплывающая надпись. Удар считается по позициям после шагов, поэтому всплывает после
-   * анимации шага — позицию берём в момент старта.
+   * Всплывающая надпись через delay мс — в момент попадания. Цель могла до него идти шагом,
+   * поэтому позицию берём в момент старта.
    */
-  private floatText(content: string, color: string, at: () => [number, number]): void {
+  private floatText(
+    content: string,
+    color: string,
+    delay: number,
+    at: () => [number, number],
+  ): void {
     const text = this.ui.world(
       this.scene.add
         .text(0, 0, content, {
@@ -290,7 +327,7 @@ export class ActorLayer {
     );
     this.animate({
       targets: text,
-      delay: MOVE_DURATION_MS,
+      delay,
       y: '-=10',
       alpha: { from: 1, to: 0 },
       duration: DAMAGE_FLOAT_MS,

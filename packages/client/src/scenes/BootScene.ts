@@ -22,6 +22,7 @@ export class BootScene extends Phaser.Scene {
       ASSET_PATHS.mailItem,
       ASSET_PATHS.doorClosed,
       ASSET_PATHS.doorOpen,
+      ASSET_PATHS.arrow,
     ]) {
       this.load.image(path, path);
     }

@@ -93,6 +93,8 @@ const ARROWS: Readonly<Record<Direction, string>> = {
 const WAIT: Action = { type: 'wait' };
 /** Второй клик по той же клетке быстрее этого — двойной клик. */
 const DOUBLE_CLICK_MS = 350;
+/** Тряска камеры, когда бьют вашего героя: длительность и сила (доля размера экрана). */
+const HIT_SHAKE = { ms: 120, intensity: 0.004 } as const;
 /** Сколько ждать второго Esc, чтобы бросить забег. */
 const ABANDON_CONFIRM_MS = 2000;
 
@@ -178,6 +180,11 @@ export class GameScene extends Phaser.Scene {
   private hover: Position | null = null;
   /** Последний клик по карте — чтобы распознать двойной (в Phaser такого события нет). */
   private lastClick: { readonly tile: Position; readonly at: number } | null = null;
+  /**
+   * План до последнего клика: всплывашка сразу пишет в черновик предпросмотр первого пункта,
+   * а двойной клик должен дописывать к тому, что было выбрано до него.
+   */
+  private beforeClick: { readonly draft: Action[]; readonly goal: Position | null } | null = null;
   /** Курсор прицела с клавиатуры (F); null — прицел выключен. */
   private aim: Position | null = null;
   /** За каким игроком следит камера: свой герой, а без него (погиб, вышел) — союзник. */
@@ -498,6 +505,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onTileClick(tile: Position | null): void {
+    this.beforeClick = { draft: this.draft, goal: this.goal };
     const me = this.chooser();
     if (!tile || !me || !this.canChoose()) return;
     this.aim = null;
@@ -607,15 +615,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Двойной клик — план на весь ход сразу, без всплывашки, и подтверждение:
+   * Двойной клик — дописать план до конца хода без всплывашки и подтвердить:
    * пол — шаги по пути (дальше путь продолжится сам), враг — шаг к нему и удар,
-   * своя клетка — ждать.
+   * своя клетка — ждать. Выбранное вручную действие (например, «надеть») остаётся первым,
+   * а новые считаются от клетки, куда герой придёт после него.
    */
   private onTileDoubleClick(tile: Position): void {
-    const me = this.me();
-    if (!me || !this.canChoose()) return;
+    if (!this.me() || !this.canChoose()) return;
     this.popup.hide();
     this.aim = null;
+    if (this.beforeClick) {
+      this.draft = this.beforeClick.draft;
+      this.goal = this.beforeClick.goal;
+      this.beforeClick = null;
+    }
+    // Дописываем только к неполному плану, набранному вручную; полный план и шаги к прежней
+    // цели мыши двойной клик заменяет целиком.
+    if (this.goal || this.planFull()) {
+      this.draft = [];
+      this.goal = null;
+    }
+    const slot = this.slot();
+    const prefix = this.draft.slice(0, slot);
+    const me = this.chooser();
+    if (!me) return;
     const { map, actors, explored } = this.session.state;
     if (!explored[tile.y * map.width + tile.x]) {
       this.ui.toast('Туда ещё не смотрели');
@@ -630,37 +653,45 @@ export class GameScene extends Phaser.Scene {
     if (samePos(tile, me.pos)) {
       plan = [WAIT, WAIT];
     } else if (enemy) {
-      plan = this.approachAndAttack(me, tile, path);
+      plan = this.approachAndAttack(me, prefix, tile, path);
     } else {
-      plan = path ? this.stepsAlong(me.pos, path, ACTION_POINTS) : [];
+      const left = ACTION_POINTS - (this.simulate(prefix)?.used ?? 0);
+      plan = path ? this.stepsAlong(me.pos, path, left) : [];
       if (path && path.length > plan.length) goal = tile;
     }
     if (plan.length === 0) {
       this.ui.toast('Сюда не дойти');
+      this.redraw();
       return;
     }
-    this.chooseAt([], 0, plan, goal);
+    this.chooseAt(this.draft, slot, plan, goal);
     this.confirm();
   }
 
   /**
-   * План против врага на клетке target — первый подходящий: шаг к нему и удар; два удара
-   * (уже рядом); один удар (меч — на весь ход); иначе — шаги навстречу.
+   * План против врага на клетке target после уже выбранных действий prefix — первый, что
+   * проходит правила: шаг к нему и удар; два удара (уже рядом); один удар (меч — на весь ход);
+   * шаг; иначе — шаги навстречу. me — герой после prefix (откуда считать путь).
    */
   private approachAndAttack(
     me: Actor,
+    prefix: Plan,
     target: Position,
     path: readonly Position[] | null,
   ): Action[] {
     const world = this.session.state;
+    const real = this.me();
     const attack: Action = { type: 'attack', target };
     const steps = path ? this.stepsAlong(me.pos, path, ACTION_POINTS) : [];
     const candidates: Action[][] = [
       ...(steps[0] ? [[steps[0], attack]] : []),
       [attack, attack],
       [attack],
+      ...(steps[0] ? [[steps[0]]] : []),
     ];
-    return candidates.find((plan) => isPlanValid(world, me, plan)) ?? steps;
+    const fits = (plan: Action[]): boolean =>
+      real !== undefined && isPlanValid(world, real, [...prefix, ...plan]);
+    return candidates.find(fits) ?? steps;
   }
 
   // ---------- Черновик и подтверждение ----------
@@ -906,6 +937,9 @@ export class GameScene extends Phaser.Scene {
         );
         break;
       case 'damaged':
+        if (event.actorId === this.myId) this.shakeOnHit();
+        this.logEvent(event);
+        break;
       case 'died':
       case 'itemPickedUp':
       case 'itemEquipped':
@@ -944,6 +978,13 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** По вашему герою попали — камера вздрагивает в момент удара. */
+  private shakeOnHit(): void {
+    this.time.delayedCall(this.actors.hitDelay(this.myId), () =>
+      this.cameras.main.shake(HIT_SHAKE.ms, HIT_SHAKE.intensity),
+    );
+  }
+
   /** Запоминает имена акторов и предметов, чтобы описать событие и после их исчезновения. */
   private rememberNames(state: GameState): void {
     for (const actor of Object.values(state.actors)) {
@@ -979,8 +1020,12 @@ export class GameScene extends Phaser.Scene {
         return;
       case 'itemEquipped':
         if (seen(event.actorId)) {
+          // Броня надевается, оружие берётся в руки.
+          const worn = this.session.state.actors[event.actorId]?.armor?.id === event.itemId;
           const who =
-            event.actorId === this.myId ? 'вы взяли в руки' : `${name(event.actorId)} взял в руки`;
+            event.actorId === this.myId
+              ? `вы ${worn ? 'надели' : 'взяли в руки'}`
+              : `${name(event.actorId)} ${worn ? 'надевает' : 'берёт в руки'}`;
           this.log(`${who}: ${name(event.itemId)}`);
         }
         return;
@@ -1001,7 +1046,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Удар никого не задел: «мимо» над клеткой (если её видно) и запись в лог. */
   private onMiss(attackerId: ActorId, target: Position): void {
-    if (this.visible.has(posKey(target))) this.actors.floatMiss(target);
+    if (this.visible.has(posKey(target))) this.actors.floatMiss(target, attackerId);
     if (attackerId === this.myId) this.log('вы — мимо');
     else if (this.actors.spriteOf(attackerId)?.visible) {
       this.log(`${this.names.get(attackerId) ?? '?'} — мимо`);
@@ -1213,8 +1258,11 @@ export class GameScene extends Phaser.Scene {
       case 'wait':
         return 'ждать';
       case 'equip': {
+        // Во время проигрывания хода броня уже надета: план по новому состоянию не
+        // прогнать (actor — null), смотрим на героя как есть.
         const item = actor?.backpack.find((i) => i.id === action.itemId);
-        return `${item && isArmor(item) ? 'надеть' : 'взять'}: ${name(action.itemId)}`;
+        const armor = (item && isArmor(item)) || (actor ?? this.me())?.armor?.id === action.itemId;
+        return `${armor ? 'надеть' : 'взять'}: ${name(action.itemId)}`;
       }
       case 'drop':
         return `выбросить: ${name(action.itemId)}`;

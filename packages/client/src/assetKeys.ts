@@ -23,6 +23,8 @@ export const ASSET_PATHS = {
   doorOpen: 'custom/door_open.png',
   /** Стены для всех сочетаний соседей, собраны из тайлсета пака (tools/sprites/walls.mjs). */
   walls: 'custom/walls.png',
+  /** Летящая стрела лука (из пака; смотрит вниз). */
+  arrow: 'items and trap_animation/arrow/Just_arrow.png',
 } as const;
 
 export interface FrameAnimation {
