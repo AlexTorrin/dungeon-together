@@ -3,7 +3,7 @@ import { applyHubAction, parseHubAction, parseProfile, parseSlot, parseToken } f
 import { EMPTY_PROFILE, type Profile } from './profile';
 
 describe('действия лагеря', () => {
-  const p: Profile = { coins: 4, hands: 'sword', backpack: [], chest: ['bow'] };
+  const p: Profile = { coins: 4, hands: 'sword', armor: null, backpack: [], chest: ['bow'] };
 
   it('применяются теми же правилами, что buy / sell / move', () => {
     expect(applyHubAction(p, { type: 'buy', item: 'knife' })).toMatchObject({
@@ -28,6 +28,7 @@ describe('действия лагеря', () => {
     expect(parseHubAction({ type: 'hack' })).toBeNull();
     expect(parseSlot({ place: 'backpack', index: 2 })).toEqual({ place: 'backpack', index: 2 });
     expect(parseSlot({ place: 'backpack' })).toBeNull();
+    expect(parseSlot({ place: 'armor' })).toEqual({ place: 'armor' });
   });
 
   it('профиль: монеты — целое ≥ 0, рюкзак не больше 4, только известное оружие', () => {
@@ -37,6 +38,11 @@ describe('действия лагеря', () => {
     expect(parseProfile({ ...p, backpack: ['bow', 'bow', 'bow', 'bow', 'bow'] })).toBeNull();
     expect(parseProfile({ ...p, chest: ['laser'] })).toBeNull();
     expect(parseProfile('профиль')).toBeNull();
+    // Профили, сохранённые до брони, читаются как «без брони».
+    const old = { coins: p.coins, hands: p.hands, backpack: p.backpack, chest: p.chest };
+    expect(parseProfile(old)).toEqual(p);
+    expect(parseProfile({ ...p, armor: 'mail' })).toEqual({ ...p, armor: 'mail' });
+    expect(parseProfile({ ...p, armor: 'sword' })).toBeNull();
   });
 
   it('токен: 16–128 символов без пробелов и спецсимволов', () => {

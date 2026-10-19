@@ -14,7 +14,7 @@ let store: ProfileStore;
 
 beforeAll(async () => {
   store = new ProfileStore(join(mkdtempSync(join(tmpdir(), 'dt-')), 'profiles.json'));
-  await store.set(TOKEN, { coins: 5, hands: null, backpack: [], chest: [] });
+  await store.set(TOKEN, { coins: 5, hands: null, armor: null, backpack: [], chest: [] });
   server = createServer(store);
   await server.listen(PORT);
 });

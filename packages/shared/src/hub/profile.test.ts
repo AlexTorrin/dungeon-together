@@ -53,12 +53,18 @@ describe('перекладывание', () => {
 });
 
 describe('забег', () => {
-  const p: Profile = { coins: 5, hands: 'bow', backpack: ['knife'], chest: ['sword'] };
+  const p: Profile = {
+    coins: 5,
+    hands: 'bow',
+    armor: 'leather',
+    backpack: ['knife'],
+    chest: ['sword'],
+  };
 
-  it('старт забирает руки и рюкзак, кошелёк и сундук остаются', () => {
+  it('старт забирает руки, броню и рюкзак, кошелёк и сундук остаются', () => {
     const { profile, loadout } = startRun(p);
-    expect(loadout).toEqual({ weapon: 'bow', backpack: ['knife'] });
-    expect(profile).toEqual({ coins: 5, hands: null, backpack: [], chest: ['sword'] });
+    expect(loadout).toEqual({ weapon: 'bow', armor: 'leather', backpack: ['knife'] });
+    expect(profile).toEqual({ coins: 5, hands: null, armor: null, backpack: [], chest: ['sword'] });
   });
 
   it('вынесенное возвращается, монеты — в кошелёк; погиб — ничего', () => {
@@ -66,11 +72,13 @@ describe('забег', () => {
     const carried: Carried = {
       coins: 3,
       weapon: { id: 'item-9', type: 'wand' },
+      armor: { id: 'item-3', type: 'mail' },
       backpack: [{ id: 'item-2', type: 'knife' }],
     };
     expect(finishRun(profile, carried)).toEqual({
       coins: 8,
       hands: 'wand',
+      armor: 'mail',
       backpack: ['knife'],
       chest: ['sword'],
     });
@@ -78,44 +86,87 @@ describe('забег', () => {
   });
 
   it('вынесенное добавляется, а не заменяет: занятые руки и полный рюкзак — в сундук', () => {
-    const busy: Profile = { coins: 0, hands: 'knife', backpack: ['bow', 'bow', 'bow'], chest: [] };
+    const busy: Profile = {
+      coins: 0,
+      hands: 'knife',
+      armor: 'leather',
+      backpack: ['bow', 'bow', 'bow'],
+      chest: [],
+    };
     const carried: Carried = {
       coins: 0,
       weapon: { id: 'item-1', type: 'sword' },
+      armor: { id: 'item-3', type: 'mail' },
       backpack: [{ id: 'item-2', type: 'wand' }],
     };
     expect(finishRun(busy, carried)).toEqual({
       coins: 0,
       hands: 'knife',
+      armor: 'leather',
       backpack: ['bow', 'bow', 'bow', 'sword'],
-      chest: ['wand'],
+      chest: ['mail', 'wand'],
     });
   });
 
   it('герой приходит на уровень с инвентарём из хаба', () => {
     const room = parseRoom('#####\n#@..#\n#####');
     const state = createGameState(room, ['p1', 'p2'], 1, {
-      p1: { weapon: 'bow', backpack: ['knife', 'sword'] },
+      p1: { weapon: 'bow', armor: 'leather', backpack: ['knife', 'mail'] },
     });
     expect(state.actors['p1']).toMatchObject({
       weapon: { type: 'bow' },
-      backpack: [{ type: 'knife' }, { type: 'sword' }],
+      armor: { type: 'leather' },
+      backpack: [{ type: 'knife' }, { type: 'mail' }],
     });
-    expect(state.actors['p2']).toMatchObject({ weapon: null, backpack: [] });
+    expect(state.actors['p2']).toMatchObject({ weapon: null, armor: null, backpack: [] });
     const ids = [
       state.actors['p1']?.weapon?.id,
+      state.actors['p1']?.armor?.id,
       ...(state.actors['p1']?.backpack ?? []).map((i) => i.id),
     ];
-    expect(new Set(ids).size).toBe(3);
+    expect(new Set(ids).size).toBe(4);
   });
 
   it('баночка: продаётся за 10, продаётся обратно за 5, в руки не берётся и не возвращается в руки', () => {
     const bought = buy({ ...EMPTY_PROFILE, coins: 10 }, 'potion');
-    expect(bought).toEqual({ coins: 0, hands: null, backpack: ['potion'], chest: [] });
+    expect(bought).toEqual({ ...EMPTY_PROFILE, backpack: ['potion'] });
     if (!bought) throw new Error('не купилась');
     expect(sell(bought, { place: 'backpack', index: 0 })?.coins).toBe(5);
     expect(move(bought, { place: 'backpack', index: 0 }, 'hands')).toBeNull();
-    const carried: Carried = { coins: 0, weapon: null, backpack: [{ id: 'h', type: 'potion' }] };
+    const carried: Carried = {
+      coins: 0,
+      weapon: null,
+      armor: null,
+      backpack: [{ id: 'h', type: 'potion' }],
+    };
     expect(finishRun(EMPTY_PROFILE, carried)).toMatchObject({ hands: null, backpack: ['potion'] });
+  });
+});
+
+describe('броня в лагере', () => {
+  it('кожаная продаётся за 4, кольчуги в магазине нет; надеть можно только броню', () => {
+    const bought = buy({ ...EMPTY_PROFILE, coins: 4 }, 'leather');
+    expect(bought).toEqual({ ...EMPTY_PROFILE, backpack: ['leather'] });
+    expect(buy({ ...EMPTY_PROFILE, coins: 99 }, 'mail')).toBeNull();
+    if (!bought) throw new Error('не купилась');
+    expect(move(bought, { place: 'backpack', index: 0 }, 'hands')).toBeNull();
+    expect(move(bought, { place: 'backpack', index: 0 }, 'armor')).toEqual({
+      ...EMPTY_PROFILE,
+      armor: 'leather',
+    });
+    const armed: Profile = { ...EMPTY_PROFILE, backpack: ['knife', 'potion'] };
+    expect(move(armed, { place: 'backpack', index: 0 }, 'armor')).toBeNull();
+    expect(move(armed, { place: 'backpack', index: 1 }, 'armor')).toBeNull();
+  });
+
+  it('надеть другую — прежняя встаёт на место взятой; снятую можно продать', () => {
+    const p: Profile = { ...EMPTY_PROFILE, armor: 'leather', chest: ['mail'] };
+    expect(move(p, { place: 'chest', index: 0 }, 'armor')).toEqual({
+      ...p,
+      armor: 'mail',
+      chest: ['leather'],
+    });
+    expect(sell(p, { place: 'armor' })).toEqual({ ...p, armor: null, coins: 2 });
+    expect(sell(p, { place: 'chest', index: 0 })?.coins).toBe(4);
   });
 });

@@ -67,7 +67,7 @@ describe('leave', () => {
 
     const withEscaped: GameState = {
       ...solo,
-      escaped: { p2: { coins: 1, weapon: null, backpack: [] } },
+      escaped: { p2: { coins: 1, weapon: null, armor: null, backpack: [] } },
     };
     expect(applyCommand(withEscaped, { type: 'leave', playerId: 'p1' }).state.status).toBe('won');
   });

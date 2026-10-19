@@ -4,7 +4,8 @@ import { ACTION_POINTS } from '../config/turn';
 import { withExplored } from '../map/fov';
 import { setTile } from '../map/gameMap';
 import { samePos } from '../map/geometry';
-import { inHands, isWeapon, onGround } from '../items';
+import { carriedItems, inHands, onGround } from '../items';
+import { damageThrough } from '../config/armor';
 import { allocateId } from '../state/ids';
 import type {
   Action,
@@ -25,7 +26,7 @@ import type {
 import type { CommandResult } from './applyCommand';
 import { canAttack, weaponOf } from './combat';
 import { chooseMonsterPlan } from './monsterAi';
-import { canOpenDoor, drink, simulatePlan, swapOut } from './plan';
+import { canOpenDoor, drink, equip, simulatePlan } from './plan';
 import { resolveMoves, type ActorIntent } from './resolveMoves';
 
 /** Изменяемый «черновик» состояния на время разрешения хода; в состояние уходят обычные объекты. */
@@ -107,7 +108,12 @@ export function resolveTurn(state: GameState): CommandResult {
   return { state: { ...next, explored: withExplored(next) }, events: turn.events };
 }
 
-const carriedBy = ({ coins, weapon, backpack }: Actor): Carried => ({ coins, weapon, backpack });
+const carriedBy = ({ coins, weapon, armor, backpack }: Actor): Carried => ({
+  coins,
+  weapon,
+  armor,
+  backpack,
+});
 
 /** Кладёт на пол новую вещь (выброшенные монеты, ключ) с новым id. */
 function dropNew(turn: Turn, actorId: ActorId, loot: Loot, at: Position): void {
@@ -121,14 +127,15 @@ function dropNew(turn: Turn, actorId: ActorId, loot: Loot, at: Position): void {
  * Одна фаза: все действуют одновременно.
  *
  * 1. Шаги — с конфликтами (resolveMoves).
- * 2. Подбор: кто шагнул на клетку, забирает монеты и ключи и кладёт оружие и баночки в рюкзак,
- *    пока есть место. Взять в руки, выбросить, выпить, открыть дверь — тоже здесь, до ударов:
+ * 2. Подбор: кто шагнул на клетку, забирает монеты и ключи и кладёт оружие, броню и баночки
+ *    в рюкзак, пока есть место. Взять в руки (надеть), выбросить, выпить, открыть дверь — тоже здесь, до ударов:
  *    выпивший во второй фазе лечится раньше, чем по нему ударят в этой фазе.
  *    Игрок в открытой двери покидает уровень со всем, что несёт.
  * 3. Удары — по клеткам, где акторы стоят ПОСЛЕ шагов этой фазы. Отошёл — увернулся, шагнул под
  *    удар — получил. Удар, который с фактической позиции уже не достаёт (упёрся в стену, цель за
- *    углом), срывается и считается ожиданием. Урон применяется разом: убитый тоже успевает ударить.
- * 4. Смерти: hp ≤ 0 — актор удаляется, всё, что нёс (оружие, монеты, ключи), падает на пол.
+ *    углом), срывается и считается ожиданием. Надетая броня уменьшает урон каждого удара
+ *    (config/armor.ts). Урон применяется разом: убитый тоже успевает ударить.
+ * 4. Смерти: hp ≤ 0 — актор удаляется, всё, что нёс (оружие, броня, монеты, ключи), падает на пол.
  */
 function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
   const { actors, items, events } = turn;
@@ -173,7 +180,7 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
     }
   }
 
-  // 2. Подбор: всё, что лежит на клетке (оружие и баночки — пока есть место в рюкзаке)
+  // 2. Подбор: всё, что лежит на клетке (оружие, броня, баночки — пока есть место в рюкзаке)
   for (const id of moved) {
     let actor = actors.get(id);
     if (!actor) continue;
@@ -199,23 +206,17 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
     const actor = actors.get(id);
     if (!actor) continue;
     if (action.type === 'equip') {
-      const item = actor.backpack.find((i) => i.id === action.itemId);
-      if (!item || !isWeapon(item)) continue; // проверено в плане; на всякий случай — ничего
-      actors.set(id, {
-        ...actor,
-        weapon: item,
-        backpack: swapOut(actor.backpack, item, actor.weapon),
-      });
-      events.push({ type: 'itemEquipped', actorId: id, itemId: item.id });
+      const after = equip(actor, action.itemId);
+      if (!after) continue; // проверено в плане; на всякий случай — ничего
+      actors.set(id, after);
+      events.push({ type: 'itemEquipped', actorId: id, itemId: action.itemId });
     } else if (action.type === 'drop') {
-      const item =
-        actor.weapon?.id === action.itemId
-          ? actor.weapon
-          : actor.backpack.find((i) => i.id === action.itemId);
+      const item = carriedItems(actor).find((i) => i.id === action.itemId);
       if (!item) continue;
       actors.set(id, {
         ...actor,
         weapon: actor.weapon?.id === item.id ? null : actor.weapon,
+        armor: actor.armor?.id === item.id ? null : actor.armor,
         backpack: actor.backpack.filter((i) => i.id !== item.id),
       });
       items.set(item.id, onGround(item, actor.pos));
@@ -260,14 +261,14 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
     }
   }
 
-  // 3. Удары: урон по позициям после шагов, применяется разом
+  // 3. Удары: урон по позициям после шагов (броня срезает каждый удар), применяется разом
   const damage = new Map<ActorId, number>();
   for (const { id, target } of attacks) {
     const attacker = actors.get(id);
     if (!attacker) continue;
-    const { damage: amount } = weaponOf(attacker);
     for (const victim of actors.values()) {
       if (!samePos(victim.pos, target)) continue;
+      const amount = damageThrough(weaponOf(attacker).damage, victim.armor?.type ?? null);
       const hp = victim.hp - (damage.get(victim.id) ?? 0) - amount;
       damage.set(victim.id, (damage.get(victim.id) ?? 0) + amount);
       events.push({ type: 'damaged', actorId: victim.id, by: id, amount, hp });
@@ -283,7 +284,7 @@ function resolvePhase(turn: Turn, actions: ReadonlyMap<ActorId, Action>): void {
     if (actor.hp > 0) continue;
     actors.delete(actor.id);
     events.push({ type: 'died', actorId: actor.id, at: actor.pos });
-    for (const item of [...(actor.weapon ? [actor.weapon] : []), ...actor.backpack]) {
+    for (const item of carriedItems(actor)) {
       items.set(item.id, onGround(item, actor.pos));
       events.push({ type: 'itemDropped', actorId: actor.id, itemId: item.id, at: actor.pos });
     }

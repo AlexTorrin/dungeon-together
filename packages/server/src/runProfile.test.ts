@@ -22,8 +22,14 @@ let store: ProfileStore;
 
 beforeAll(async () => {
   store = new ProfileStore(join(mkdtempSync(join(tmpdir(), 'dt-')), 'profiles.json'));
-  await store.set(TOKEN, { coins: 1, hands: 'bow', backpack: [], chest: ['wand'] });
-  await store.set(PRACTICE_TOKEN, { coins: 5, hands: 'knife', backpack: [], chest: [] });
+  await store.set(TOKEN, { coins: 1, hands: 'bow', armor: null, backpack: [], chest: ['wand'] });
+  await store.set(PRACTICE_TOKEN, {
+    coins: 5,
+    hands: 'knife',
+    armor: null,
+    backpack: [],
+    chest: [],
+  });
   server = createServer(store, { level: () => parseRoom(ROOM) });
   await server.listen(PORT);
 });
@@ -53,14 +59,26 @@ describe('забег и профиль на сервере', () => {
     const started = next(room, 'started');
     room.send('start', null);
     expect((await started).state.actors['p1']).toMatchObject({ weapon: { type: 'bow' } });
-    expect(store.get(TOKEN)).toEqual({ coins: 1, hands: null, backpack: [], chest: ['wand'] });
+    expect(store.get(TOKEN)).toEqual({
+      coins: 1,
+      hands: null,
+      armor: null,
+      backpack: [],
+      chest: ['wand'],
+    });
 
     await turn(room, [{ type: 'move', direction: 'right' }]); // ключ
     await turn(room, [{ type: 'openDoor' }, { type: 'move', direction: 'right' }]); // монета
     const { events } = await turn(room, [{ type: 'move', direction: 'up' }]); // в дверь
     expect(events).toContainEqual({ type: 'gameOver', status: 'won' });
 
-    expect(store.get(TOKEN)).toEqual({ coins: 2, hands: 'bow', backpack: [], chest: ['wand'] });
+    expect(store.get(TOKEN)).toEqual({
+      coins: 2,
+      hands: 'bow',
+      armor: null,
+      backpack: [],
+      chest: ['wand'],
+    });
     await room.leave();
   });
 
@@ -86,6 +104,7 @@ describe('забег и профиль на сервере', () => {
     expect(store.get(PRACTICE_TOKEN)).toEqual({
       coins: 5,
       hands: 'knife',
+      armor: null,
       backpack: [],
       chest: [],
     });

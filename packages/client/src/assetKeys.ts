@@ -1,4 +1,4 @@
-import type { Loot, WeaponType } from '@dt/shared';
+import type { ArmorType, Loot, WeaponType } from '@dt/shared';
 
 /** Ключи текстур/анимаций и пути к файлам в assets/. */
 export const TEXTURES = {
@@ -15,6 +15,9 @@ export const ASSET_PATHS = {
   bowItem: 'custom/bow.png',
   swordItem: 'custom/sword.png',
   wandItem: 'custom/wand.png',
+  /** Броня — тоже своя (tools/sprites/leather.mjs, mail.mjs). */
+  leatherItem: 'custom/leather.png',
+  mailItem: 'custom/mail.png',
   /** Дверь-выход: закрытая и открытая (tools/sprites/door.mjs). */
   doorClosed: 'custom/door_closed.png',
   doorOpen: 'custom/door_open.png',
@@ -120,18 +123,21 @@ export interface StaticLook {
   readonly frame?: number;
 }
 
-/** Предметы на полу — свои спрайты (в паке оружия нет). */
-export const ITEM_LOOKS: Readonly<Record<WeaponType, StaticLook>> = {
+/** Предметы на полу — свои спрайты (в паке оружия и брони нет). */
+export const ITEM_LOOKS: Readonly<Record<WeaponType | ArmorType, StaticLook>> = {
   knife: { texture: ASSET_PATHS.knifeItem },
   bow: { texture: ASSET_PATHS.bowItem },
   sword: { texture: ASSET_PATHS.swordItem },
   wand: { texture: ASSET_PATHS.wandItem },
+  leather: { texture: ASSET_PATHS.leatherItem },
+  mail: { texture: ASSET_PATHS.mailItem },
 };
 
-/** Как выглядит вещь на полу: оружие — свой спрайт, баночка, монеты и ключ — анимация из пака. */
+/** Как выглядит вещь на полу: оружие и броня — свой спрайт, баночка, монеты и ключ — анимация из пака. */
 export function lootLook(loot: Loot): StaticLook & { readonly anim?: string } {
   switch (loot.kind) {
     case 'weapon':
+    case 'armor':
       return ITEM_LOOKS[loot.type];
     case 'potion':
       return { texture: firstFrame(ANIMATIONS.potion), anim: ANIMATIONS.potion.key };

@@ -17,7 +17,7 @@ const BORYA = 'borya-token-000000000';
 
 beforeAll(async () => {
   store = new ProfileStore(join(mkdtempSync(join(tmpdir(), 'dt-')), 'profiles.json'));
-  await store.set(ANYA, { coins: 3, hands: 'bow', backpack: [], chest: ['sword'] });
+  await store.set(ANYA, { coins: 3, hands: 'bow', armor: null, backpack: [], chest: ['sword'] });
   server = createServer(store);
   await server.listen(PORT);
 });
@@ -65,7 +65,13 @@ describe('DungeonRoom', () => {
     expect(state.actors['p1']).toMatchObject({ weapon: { type: 'bow' } });
     expect(state.actors['p2']).toMatchObject({ weapon: null, backpack: [] });
     // Снаряжение забрано из профиля сервером, кошелёк и сундук на месте.
-    expect(store.get(ANYA)).toEqual({ coins: 3, hands: null, backpack: [], chest: ['sword'] });
+    expect(store.get(ANYA)).toEqual({
+      coins: 3,
+      hands: null,
+      armor: null,
+      backpack: [],
+      chest: ['sword'],
+    });
 
     // playerId из сообщения сервер не слушает: гость не может походить за хоста.
     const hostSees = next(host, 'events');

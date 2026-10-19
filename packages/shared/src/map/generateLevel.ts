@@ -98,7 +98,8 @@ function placeDoor(
  * Случайный уровень заданной сложности (config/level.ts): карта из rot.js, старт — в центре
  * первой комнаты; монстры, оружие и монеты — в остальных комнатах (в стартовой никого нет,
  * чтобы не начинать бой с первого хода). Часть монстров вооружена, часть монет у монстров
- * (выпадут при смерти), ключ от двери-выхода — у случайного монстра.
+ * (выпадут при смерти), ключ от двери-выхода — у случайного монстра; изредка лежат баночка
+ * и броня.
  * Одинаковые seed и сложность — одинаковый уровень.
  */
 export function generateLevel(seed: number, difficulty: Difficulty = 'medium'): Room {
@@ -180,6 +181,11 @@ export function generateLevel(seed: number, difficulty: Difficulty = 'medium'): 
   const [hasPotion, afterPotion] = chance(rng, LEVEL.potionChance);
   rng = afterPotion;
   if (hasPotion) items.push({ kind: 'potion', pos: place() });
+
+  // Броня — тоже редкость, и тоже в конце: уровни без неё не меняются.
+  const [hasArmor, afterArmor] = chance(rng, LEVEL.armorChance);
+  rng = afterArmor;
+  if (hasArmor) items.push({ kind: 'armor', type: config.armor, pos: place() });
 
   return { map, spawn, monsters, items, door };
 }

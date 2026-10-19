@@ -3,8 +3,8 @@ import { step } from '../direction';
 import { canStep } from '../map/pathfinding';
 import { chebyshev } from '../map/geometry';
 import { potionHeal } from '../config/potion';
-import { isWeapon } from '../items';
-import type { Action, Actor, GameState, Item, ItemId, Plan, WeaponItem } from '../types';
+import { isArmor, isWeapon } from '../items';
+import type { Action, Actor, GameState, Item, ItemId, Plan } from '../types';
 import { canAttack } from './combat';
 
 const WAIT: Action = { type: 'wait' };
@@ -42,13 +42,11 @@ function applyExpected(world: World, actor: Actor, action: Action): Actor | null
         : actor; // упрётся — останется на месте, план от этого не ломается
     case 'attack':
       return canAttack(map, actor, action.target) ? actor : null;
-    case 'equip': {
-      const item = actor.backpack.find((i) => i.id === action.itemId);
-      if (!item || !isWeapon(item)) return null; // в руки — только оружие
-      return { ...actor, weapon: item, backpack: swapOut(actor.backpack, item, actor.weapon) };
-    }
+    case 'equip':
+      return equip(actor, action.itemId);
     case 'drop': {
       if (actor.weapon?.id === action.itemId) return { ...actor, weapon: null };
+      if (actor.armor?.id === action.itemId) return { ...actor, armor: null };
       if (!actor.backpack.some((i) => i.id === action.itemId)) return null;
       return { ...actor, backpack: actor.backpack.filter((i) => i.id !== action.itemId) };
     }
@@ -78,13 +76,24 @@ export function drink(actor: Actor, itemId: ItemId): Pick<Actor, 'hp' | 'backpac
   };
 }
 
-/** Рюкзак после «взять item в руки»: item уходит, на его место — то, что было в руках. */
-export function swapOut(
-  backpack: readonly Item[],
-  item: WeaponItem,
-  hands: WeaponItem | null,
-): Item[] {
-  return backpack.flatMap((i) => (i.id !== item.id ? [i] : hands ? [hands] : []));
+/**
+ * Актор после «взять в руки» (оружие) или «надеть» (броню) предмет itemId из рюкзака;
+ * null — такого нет или это баночка.
+ */
+export function equip<A extends Actor>(actor: A, itemId: ItemId): A | null {
+  const item = actor.backpack.find((i) => i.id === itemId);
+  if (item && isWeapon(item)) {
+    return { ...actor, weapon: item, backpack: swapOut(actor.backpack, item, actor.weapon) };
+  }
+  if (item && isArmor(item)) {
+    return { ...actor, armor: item, backpack: swapOut(actor.backpack, item, actor.armor) };
+  }
+  return null;
+}
+
+/** Рюкзак после «взять item в руки (надеть)»: item уходит, на его место — то, что было в руках (на себе). */
+export function swapOut(backpack: readonly Item[], item: Item, worn: Item | null): Item[] {
+  return backpack.flatMap((i) => (i.id !== item.id ? [i] : worn ? [worn] : []));
 }
 
 /**

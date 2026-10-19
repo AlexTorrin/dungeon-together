@@ -11,6 +11,10 @@ import {
   simulatePlan,
   WEAPONS,
   UNARMED,
+  ARMORS,
+  carriedItems,
+  isArmor,
+  type ArmorItem,
   type GroundItem,
   type WeaponItem,
   POTION,
@@ -120,6 +124,7 @@ const REJECT_TEXT: Readonly<Record<PlanRejectReason, string>> = {
 function lootName(item: GroundItem): string {
   switch (item.kind) {
     case 'weapon':
+    case 'armor':
       return ITEM_NAMES[item.type];
     case 'potion':
       return ITEM_NAMES.potion;
@@ -134,6 +139,13 @@ function lootName(item: GroundItem): string {
 function weaponLabel(item: WeaponItem | null): string {
   const { damage, range, cost } = item ? WEAPONS[item.type] : UNARMED;
   return `${ITEM_NAMES[item?.type ?? 'none']} (урон ${damage}, дальн. ${range}, удар ${cost} ОД)`;
+}
+
+/** Надетая броня: название и защита для HUD. */
+function armorLabel(item: ArmorItem | null): string {
+  return item
+    ? `${ITEM_NAMES[item.type]} (−${ARMORS[item.type].defense} урона)`
+    : ITEM_NAMES.noArmor;
 }
 
 /**
@@ -284,7 +296,7 @@ export class GameScene extends Phaser.Scene {
       12,
       10,
       'Ход — 2 ОД · WASD — шаг · Shift+WASD — удар · F — прицел · Пробел — ждать · ' +
-        '1–4 — в руки · Q — выбросить · E — открыть дверь',
+        '1–4 — в руки / надеть · Q — выбросить · E — открыть дверь',
       UI_COLORS.muted,
     );
     ui.text(
@@ -431,7 +443,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** 1–4: взять в руки предмет из слота рюкзака (баночку — выпить); Shift+1–4 — выбросить. */
+  /** 1–4: взять в руки предмет из слота рюкзака (броню — надеть, баночку — выпить); Shift+1–4 — выбросить. */
   private chooseItem(slot: number, type: 'equip' | 'drop'): void {
     const item = this.chooser()?.backpack[slot];
     if (!item) {
@@ -545,6 +557,12 @@ export class GameScene extends Phaser.Scene {
             [{ type: 'drink', itemId: item.id }],
             null,
           );
+        } else if (isArmor(item)) {
+          offer(
+            `Надеть: ${ITEM_NAMES[item.type]} (−${ARMORS[item.type].defense} урона)`,
+            [{ type: 'equip', itemId: item.id }],
+            null,
+          );
         } else {
           offer(
             `Взять в руки: ${ITEM_NAMES[item.type]}`,
@@ -557,6 +575,13 @@ export class GameScene extends Phaser.Scene {
         offer(
           `Выбросить: ${ITEM_NAMES[me.weapon.type]}`,
           [{ type: 'drop', itemId: me.weapon.id }],
+          null,
+        );
+      }
+      if (me.armor) {
+        offer(
+          `Снять и выбросить: ${ITEM_NAMES[me.armor.type]}`,
+          [{ type: 'drop', itemId: me.armor.id }],
           null,
         );
       }
@@ -940,9 +965,7 @@ export class GameScene extends Phaser.Scene {
   private rememberNames(state: GameState): void {
     for (const actor of Object.values(state.actors)) {
       this.names.set(actor.id, actor.kind === 'monster' ? SPECIES_NAMES[actor.species] : 'игрок');
-      for (const item of [...(actor.weapon ? [actor.weapon] : []), ...actor.backpack]) {
-        this.names.set(item.id, ITEM_NAMES[item.type]);
-      }
+      for (const item of carriedItems(actor)) this.names.set(item.id, ITEM_NAMES[item.type]);
     }
     for (const item of Object.values(state.items)) this.names.set(item.id, lootName(item));
     for (const [id, name] of Object.entries(this.playerNames)) this.names.set(id, name);
@@ -1058,6 +1081,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5);
     const summary = loot
       ? `Вынесено: монет ${loot.coins} · в руках: ${ITEM_NAMES[loot.weapon?.type ?? 'none']} · ` +
+        `броня: ${ITEM_NAMES[loot.armor?.type ?? 'noArmor']} · ` +
         `в рюкзаке: ${loot.backpack.map((i) => ITEM_NAMES[i.type]).join(', ') || 'пусто'}`
       : 'Всё, что вы несли, потеряно';
     this.ui.text(width / 2, height / 2 + 26, summary).setOrigin(0.5);
@@ -1148,9 +1172,10 @@ export class GameScene extends Phaser.Scene {
     this.refreshStatus();
   }
 
-  /** Действие плана словами; оружие — то, что будет в руках в момент действия. */
-  private describeAction(action: Action, hands: WeaponItem | null): string {
+  /** Действие плана словами; actor — каким герой будет в момент действия (оружие, рюкзак). */
+  private describeAction(action: Action, actor: Actor | null): string {
     const name = (id: string): string => this.names.get(id) ?? '?';
+    const hands = actor?.weapon ?? null;
     switch (action.type) {
       case 'move':
         return `шаг ${ARROWS[action.direction]}`;
@@ -1160,8 +1185,10 @@ export class GameScene extends Phaser.Scene {
           : `удар (${ITEM_NAMES[hands?.type ?? 'none']})`;
       case 'wait':
         return 'ждать';
-      case 'equip':
-        return `взять: ${name(action.itemId)}`;
+      case 'equip': {
+        const item = actor?.backpack.find((i) => i.id === action.itemId);
+        return `${item && isArmor(item) ? 'надеть' : 'взять'}: ${name(action.itemId)}`;
+      }
       case 'drop':
         return `выбросить: ${name(action.itemId)}`;
       case 'dropCoins':
@@ -1180,7 +1207,7 @@ export class GameScene extends Phaser.Scene {
     return plan
       .map((a, i) => {
         const phase = sim?.phaseOf[i] ?? i;
-        return `${phase + 1}) ${this.describeAction(a, sim?.before[phase]?.weapon ?? null)}`;
+        return `${phase + 1}) ${this.describeAction(a, sim?.before[phase] ?? null)}`;
       })
       .join('  ');
   }
@@ -1198,7 +1225,8 @@ export class GameScene extends Phaser.Scene {
       return `${i + 1}) ${item ? ITEM_NAMES[item.type] : '—'}`;
     }).join(' ');
     const inventory =
-      `Руки: ${weaponLabel(me.weapon)} · Рюкзак: ${slots} · Монеты: ${me.coins}` +
+      `Руки: ${weaponLabel(me.weapon)} · Броня: ${armorLabel(me.armor)} · Рюкзак: ${slots} · ` +
+      `Монеты: ${me.coins}` +
       (me.keys > 0 ? ' · Ключ ⚿' : '');
     const used = this.simulate(this.draft)?.used ?? 0;
     const choice = this.sent

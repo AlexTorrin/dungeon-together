@@ -9,6 +9,8 @@ export type {
   GroundItem,
   Item,
   ItemType,
+  ArmorItem,
+  ArmorType,
   PotionItem,
   WeaponItem,
   ItemId,
@@ -123,5 +125,6 @@ export {
   type HubAction,
 } from './hub/actions';
 export { POTION, potionHeal } from './config/potion';
-export { inHands, isWeapon, onGround } from './items';
+export { carriedItems, inHands, isArmor, isArmorType, isWeapon, onGround } from './items';
+export { ARMORS, ARMOR_TYPES, damageThrough } from './config/armor';
 export { PLAYER_MAX_HP } from './config/actors';

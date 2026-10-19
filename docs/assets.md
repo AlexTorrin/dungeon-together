@@ -17,6 +17,7 @@
 | `Character_animation/monsters_idle/skull/v1/*`         | монстр `skull`                                                                                     |
 | `Character_animation/monsters_idle/vampire/v1/*`       | монстр `vampire`                                                                                   |
 | `custom/knife.png`, `bow.png`, `sword.png`, `wand.png` | оружие на полу: нож, лук, меч, палочка — **свои спрайты**, см. ниже                                |
+| `custom/leather.png`, `mail.png`                       | броня на полу: кожанка и кольчуга — **свои спрайты**                                               |
 | `custom/door_closed.png`, `door_open.png`              | дверь-выход: закрытая и открытая — **свои спрайты**                                                |
 | `items and trap_animation/coin/coin_*`                 | монеты на полу, 4 кадра                                                                            |
 | `items and trap_animation/keys/keys_1_*`               | ключ на полу, 4 кадра                                                                              |
@@ -91,7 +92,7 @@
 ASCII-сеткой 16×16 прямо в скрипте, цвета — таблицей, обводку добавляет `renderSprite`.
 
 ```bash
-node tools/sprites/knife.mjs              # пересобрать assets/custom/knife.png (так же bow, sword, wand, door)
+node tools/sprites/knife.mjs              # пересобрать assets/custom/knife.png (так же bow, sword, wand, leather, mail, door)
 node tools/sprites/knife.mjs preview.png  # заодно превью ×10 на плитке пола
 ```
 

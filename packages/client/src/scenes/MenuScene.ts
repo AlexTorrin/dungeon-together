@@ -63,7 +63,8 @@ export class MenuScene extends Phaser.Scene {
         if (!summary.active) return; // сцену уже покинули
         const backpack = profile.backpack.map((t) => ITEM_NAMES[t]).join(', ') || 'пусто';
         summary.setText(
-          `Кошелёк: ${profile.coins} · в руках: ${ITEM_NAMES[profile.hands ?? 'none']} · рюкзак: ${backpack}`,
+          `Кошелёк: ${profile.coins} · в руках: ${ITEM_NAMES[profile.hands ?? 'none']} · ` +
+            `броня: ${ITEM_NAMES[profile.armor ?? 'noArmor']} · рюкзак: ${backpack}`,
         );
       })
       .catch((error: unknown) => {

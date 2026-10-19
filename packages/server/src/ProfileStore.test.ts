@@ -7,7 +7,7 @@ import { ProfileStore } from './ProfileStore';
 
 const file = (): string => join(mkdtempSync(join(tmpdir(), 'dt-')), 'profiles.json');
 const TOKEN = 'token-for-test-000000';
-const rich: Profile = { coins: 9, hands: 'bow', backpack: ['knife'], chest: [] };
+const rich: Profile = { coins: 9, hands: 'bow', armor: null, backpack: ['knife'], chest: [] };
 
 describe('ProfileStore', () => {
   it('новый игрок — пустой профиль; записанное переживает перезапуск', async () => {

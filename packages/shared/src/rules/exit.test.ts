@@ -121,6 +121,7 @@ describe('the exit door', () => {
     expect(next.escaped['p1']).toEqual({
       coins: 3,
       weapon: { id: 'k', type: 'knife' },
+      armor: null,
       backpack: [],
     });
     expect(events).toContainEqual({ type: 'exited', actorId: 'p1', at: DOOR });

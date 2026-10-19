@@ -8,9 +8,11 @@ import type {
   RoomMonster,
   Tile,
   WeaponType,
+  ArmorType,
 } from '../types';
 import { MONSTER_SPECIES } from '../config/actors';
 import { WEAPON_TYPES } from '../config/weapons';
+import { ARMOR_TYPES } from '../config/armor';
 import { samePos } from './geometry';
 import { getTile, isInBounds, isWalkable, resizeMap, setTile } from './gameMap';
 import { parseAsciiMap } from './parseAsciiMap';
@@ -40,6 +42,11 @@ const ITEM_CHARS: Readonly<Record<WeaponType, string>> = {
   sword: 's',
   wand: 'w',
 };
+/** l — кожаная броня (leather), c — кольчуга. */
+const ARMOR_CHARS: Readonly<Record<ArmorType, string>> = {
+  leather: 'l',
+  mail: 'c',
+};
 
 const ENTITY_CHARS: ReadonlyMap<string, RoomEntity> = new Map<string, RoomEntity>([
   ...MONSTER_SPECIES.map((species): [string, RoomEntity] => [
@@ -49,6 +56,10 @@ const ENTITY_CHARS: ReadonlyMap<string, RoomEntity> = new Map<string, RoomEntity
   ...WEAPON_TYPES.map((type): [string, RoomEntity] => [
     ITEM_CHARS[type],
     { kind: 'item', item: { kind: 'weapon', type } },
+  ]),
+  ...ARMOR_TYPES.map((type): [string, RoomEntity] => [
+    ARMOR_CHARS[type],
+    { kind: 'item', item: { kind: 'armor', type } },
   ]),
   [COINS_CHAR, { kind: 'item', item: { kind: 'coins', amount: 1 } }],
   [KEY_CHAR, { kind: 'item', item: { kind: 'key' } }],
@@ -60,6 +71,8 @@ export function lootOf(item: Loot): Loot {
   switch (item.kind) {
     case 'weapon':
       return { kind: 'weapon', type: item.type };
+    case 'armor':
+      return { kind: 'armor', type: item.type };
     case 'potion':
       return { kind: 'potion' };
     case 'coins':
@@ -73,6 +86,8 @@ function lootChar(item: Loot): string {
   switch (item.kind) {
     case 'weapon':
       return ITEM_CHARS[item.type];
+    case 'armor':
+      return ARMOR_CHARS[item.type];
     case 'potion':
       return POTION_CHAR;
     case 'coins':
@@ -94,6 +109,7 @@ const bareMonster = (species: MonsterSpecies, pos: Position): RoomMonster => ({
 /**
  * ASCII-комната: как parseAsciiMap, плюс ровно один '@' — точка старта, и расстановка:
  * S — скелет, K — череп, V — вампир; оружие: m — нож, r — лук, s — меч, w — палочка;
+ * броня: l — кожаная, c — кольчуга;
  * $ — монета, ! — ключ, p — баночка лечения (под ними пол); + — дверь-выход в стене (не больше одной).
  */
 export function parseRoom(ascii: string): Room {

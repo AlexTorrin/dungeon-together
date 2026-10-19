@@ -7,6 +7,8 @@ import type {
   GameState,
   GroundItem,
   PotionItem,
+  ArmorItem,
+  ArmorType,
   MonsterActor,
   MonsterSpecies,
   PlayerActor,
@@ -18,6 +20,7 @@ export const TEST_SEED = 42;
 
 export const weapon = (id: string, type: WeaponType): WeaponItem => ({ id, type });
 export const potion = (id: string): PotionItem => ({ id, type: 'potion' });
+export const armor = (id: string, type: ArmorType): ArmorItem => ({ id, type });
 
 export function playerAt(
   id: string,
@@ -32,6 +35,7 @@ export function playerAt(
     hp: PLAYER_MAX_HP,
     maxHp: PLAYER_MAX_HP,
     weapon: null,
+    armor: null,
     backpack: [],
     coins: 0,
     keys: 0,
@@ -55,6 +59,7 @@ export function monsterAt(
     hp: maxHp,
     maxHp,
     weapon: null,
+    armor: null,
     backpack: [],
     coins: 0,
     keys: 0,

@@ -19,12 +19,15 @@ export type Direction =
 export type MonsterSpecies = 'skeleton' | 'skull' | 'vampire';
 /** Оружие (характеристики — config/weapons.ts): нож и меч бьют соседнюю клетку, лук и палочка — издалека. */
 export type WeaponType = 'knife' | 'bow' | 'sword' | 'wand';
-/** Предмет, который занимает место в рюкзаке: оружие или баночка лечения (config/potion.ts). */
-export type ItemType = WeaponType | 'potion';
+/** Броня (защита — config/armor.ts): кожаная и кольчуга. */
+export type ArmorType = 'leather' | 'mail';
+/** Предмет, который занимает место в рюкзаке: оружие, броня или баночка лечения (config/potion.ts). */
+export type ItemType = WeaponType | ArmorType | 'potion';
 
-/** Что может лежать на полу: оружие, баночка, кучка монет или ключ от двери-выхода. */
+/** Что может лежать на полу: оружие, броня, баночка, кучка монет или ключ от двери-выхода. */
 export type Loot =
   | { readonly kind: 'weapon'; readonly type: WeaponType }
+  | { readonly kind: 'armor'; readonly type: ArmorType }
   | { readonly kind: 'potion' }
   | { readonly kind: 'coins'; readonly amount: number }
   | { readonly kind: 'key' };
@@ -68,11 +71,20 @@ export interface PotionItem {
   readonly type: 'potion';
 }
 
-/** Предмет у актора. В руках бывает только оружие (WeaponItem), в рюкзаке — что угодно. */
-export type Item = WeaponItem | PotionItem;
+/** Броня — надета (слот armor) или лежит в рюкзаке; надеть — действие equip. */
+export interface ArmorItem {
+  readonly id: ItemId;
+  readonly type: ArmorType;
+}
 
 /**
- * Предмет, лежащий на полу. Подобранные оружие и баночка становятся Item в рюкзаке, монеты
+ * Предмет у актора. В руках бывает только оружие (WeaponItem), надета — только броня (ArmorItem),
+ * в рюкзаке — что угодно.
+ */
+export type Item = WeaponItem | ArmorItem | PotionItem;
+
+/**
+ * Предмет, лежащий на полу. Подобранные оружие, броня и баночка становятся Item в рюкзаке, монеты
  * и ключ — счётчиками актора.
  */
 export type GroundItem = Loot & { readonly id: ItemId; readonly pos: Position };
@@ -84,6 +96,8 @@ interface ActorBase {
   readonly maxHp: number;
   /** Одно оружие в руках или ничего (тогда бьёт кулаками). */
   readonly weapon: WeaponItem | null;
+  /** Надетая броня или ничего: уменьшает получаемый урон (config/armor.ts). */
+  readonly armor: ArmorItem | null;
   /** Рюкзак: до BACKPACK_SIZE предметов (config/inventory.ts). Подобранное попадает сюда. */
   readonly backpack: readonly Item[];
   /** Монеты и ключи места в рюкзаке не занимают. */
@@ -111,9 +125,12 @@ export type Action =
   | { readonly type: 'move'; readonly direction: Direction }
   | { readonly type: 'attack'; readonly target: Position }
   | { readonly type: 'wait' }
-  /** Взять в руки предмет из рюкзака; то, что было в руках, уходит в рюкзак на его место. */
+  /**
+   * Взять в руки оружие (или надеть броню) из рюкзака; то, что было в руках (надето), уходит в
+   * рюкзак на его место.
+   */
   | { readonly type: 'equip'; readonly itemId: ItemId }
-  /** Выбросить предмет (из рук или рюкзака) на свою клетку — например, чтобы отдать союзнику. */
+  /** Выбросить предмет (из рук, с себя или из рюкзака) на свою клетку — например, чтобы отдать союзнику. */
   | { readonly type: 'drop'; readonly itemId: ItemId }
   /** Выбросить часть своих монет кучкой на свою клетку. */
   | { readonly type: 'dropCoins'; readonly amount: number }
@@ -137,6 +154,7 @@ export type GameStatus = 'playing' | 'won' | 'lost';
 export interface Carried {
   readonly coins: number;
   readonly weapon: WeaponItem | null;
+  readonly armor: ArmorItem | null;
   readonly backpack: readonly Item[];
 }
 

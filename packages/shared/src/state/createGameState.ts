@@ -4,6 +4,7 @@ import { withExplored } from '../map/fov';
 import { canStep } from '../map/pathfinding';
 import { seedRng } from '../rng';
 import { allocateId } from './ids';
+import { makeItem } from '../items';
 import type {
   Actor,
   ActorId,
@@ -76,6 +77,7 @@ export function createGameState(
       hp: maxHp,
       maxHp,
       weapon: item,
+      armor: null,
       backpack: [],
       coins,
       keys: hasKey ? 1 : 0,
@@ -97,8 +99,7 @@ export function createGameState(
       [itemId, nextId] = allocateId(nextId, 'item');
       return itemId;
     };
-    const newItem = (type: ItemType): Item =>
-      type === 'potion' ? { id: newId(), type } : { id: newId(), type };
+    const newItem = (type: ItemType): Item => makeItem(newId(), type);
     actors[id] = {
       kind: 'player',
       id,
@@ -106,6 +107,7 @@ export function createGameState(
       hp: PLAYER_MAX_HP,
       maxHp: PLAYER_MAX_HP,
       weapon: loadout?.weapon ? { id: newId(), type: loadout.weapon } : null,
+      armor: loadout?.armor ? { id: newId(), type: loadout.armor } : null,
       backpack: (loadout?.backpack ?? []).slice(0, BACKPACK_SIZE).map(newItem),
       coins: 0,
       keys: 0,

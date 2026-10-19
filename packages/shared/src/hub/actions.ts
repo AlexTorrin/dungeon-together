@@ -1,4 +1,5 @@
 import { BACKPACK_SIZE } from '../config/inventory';
+import { isArmorType } from '../items';
 import { WEAPONS } from '../config/weapons';
 import type { ItemType, WeaponType } from '../types';
 import { buy, move, sell, type Profile, type Slot } from './profile';
@@ -35,18 +36,18 @@ export const isWeaponType = (value: unknown): value is WeaponType =>
   typeof value === 'string' && Object.hasOwn(WEAPONS, value);
 
 export const isItemType = (value: unknown): value is ItemType =>
-  value === 'potion' || isWeaponType(value);
+  value === 'potion' || isWeaponType(value) || isArmorType(value);
 
 const isIndex = (value: unknown): value is number =>
   Number.isSafeInteger(value) && (value as number) >= 0;
 
 const isPlace = (value: unknown): value is Slot['place'] =>
-  value === 'hands' || value === 'backpack' || value === 'chest';
+  value === 'hands' || value === 'armor' || value === 'backpack' || value === 'chest';
 
 export function parseSlot(raw: unknown): Slot | null {
   if (!isObject(raw)) return null;
   const place = field(raw, 'place');
-  if (place === 'hands') return { place };
+  if (place === 'hands' || place === 'armor') return { place };
   const index = field(raw, 'index');
   if ((place === 'backpack' || place === 'chest') && isIndex(index)) return { place, index };
   return null;
@@ -76,10 +77,13 @@ export function parseProfile(raw: unknown): Profile | null {
   if (!isObject(raw)) return null;
   const coins = field(raw, 'coins');
   const hands = field(raw, 'hands');
+  // Профили до брони поля armor не имеют — значит, без брони.
+  const armor = field(raw, 'armor') ?? null;
   const backpack = field(raw, 'backpack');
   const chest = field(raw, 'chest');
   if (!isIndex(coins)) return null;
   if (hands !== null && !isWeaponType(hands)) return null;
+  if (armor !== null && !isArmorType(armor)) return null;
   if (!Array.isArray(backpack) || backpack.length > BACKPACK_SIZE) return null;
   if (!Array.isArray(chest)) return null;
   const items = (list: readonly unknown[]): ItemType[] | null =>
@@ -87,7 +91,7 @@ export function parseProfile(raw: unknown): Profile | null {
   const backpackItems = items(backpack);
   const chestItems = items(chest);
   if (!backpackItems || !chestItems) return null;
-  return { coins, hands, backpack: backpackItems, chest: chestItems };
+  return { coins, hands, armor, backpack: backpackItems, chest: chestItems };
 }
 
 /** Токен игрока: 16–128 символов [A-Za-z0-9_-] (клиент делает его из crypto.getRandomValues). */

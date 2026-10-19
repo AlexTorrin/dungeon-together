@@ -76,7 +76,7 @@ const TOOLS: readonly { tool: Tool; label: string; key: string }[] = [
   },
 ];
 
-/** Второй ряд — без горячих клавиш: дверь-выход, монета, ключ, баночка. */
+/** Второй ряд — без горячих клавиш: дверь-выход, монета, ключ, баночка, броня. */
 const EXTRA_TOOLS: readonly { tool: Tool; label: string }[] = [
   { tool: { kind: 'door' }, label: 'Дверь' },
   {
@@ -87,6 +87,14 @@ const EXTRA_TOOLS: readonly { tool: Tool; label: string }[] = [
   {
     tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'potion' } } },
     label: 'Баночка',
+  },
+  {
+    tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'armor', type: 'leather' } } },
+    label: 'Кожанка',
+  },
+  {
+    tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'armor', type: 'mail' } } },
+    label: 'Кольчуга',
   },
 ];
 

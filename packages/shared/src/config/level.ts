@@ -1,4 +1,4 @@
-import type { MonsterSpecies, WeaponType } from '../types';
+import type { ArmorType, MonsterSpecies, WeaponType } from '../types';
 
 /** Параметры генерации уровня (generateLevel), общие для всех сложностей. */
 export const LEVEL = {
@@ -14,6 +14,8 @@ export const LEVEL = {
   items: 3,
   /** Шанс, что на уровне лежит баночка лечения (одна) — очень редко. */
   potionChance: 0.1,
+  /** Шанс, что на уровне лежит броня (одна; какая — по сложности, DifficultyConfig.armor). */
+  armorChance: 0.25,
 } as const;
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -27,17 +29,27 @@ export interface DifficultyConfig {
   readonly armedWith: readonly WeaponType[];
   /** Монет на уровне всего [мин, макс]: часть лежит кучками по 1, часть у монстров. */
   readonly coins: readonly [number, number];
+  /** Какая броня может лежать на уровне (LEVEL.armorChance). */
+  readonly armor: ArmorType;
 }
 
 /** Сложности (docs/game-design.md): в среднем уровень даёт 2–3 монеты. */
 export const DIFFICULTIES: Readonly<Record<Difficulty, DifficultyConfig>> = {
-  easy: { monsters: 3, species: ['skull'], armed: 0, armedWith: [], coins: [2, 2] },
+  easy: {
+    monsters: 3,
+    species: ['skull'],
+    armed: 0,
+    armedWith: [],
+    coins: [2, 2],
+    armor: 'leather',
+  },
   medium: {
     monsters: 5,
     species: ['skull', 'skeleton'],
     armed: 1,
     armedWith: ['knife', 'bow'],
     coins: [2, 3],
+    armor: 'leather',
   },
   hard: {
     monsters: 7,
@@ -45,6 +57,7 @@ export const DIFFICULTIES: Readonly<Record<Difficulty, DifficultyConfig>> = {
     armed: 3,
     armedWith: ['knife', 'bow', 'sword', 'wand'],
     coins: [3, 3],
+    armor: 'mail',
   },
 };
 

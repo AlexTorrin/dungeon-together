@@ -1,4 +1,5 @@
-import { isWeapon } from '../items';
+import { isArmor, isWeapon } from '../items';
+import { ARMORS } from '../config/armor';
 import { AGGRO_RADIUS, AI_AIM_AT_CURRENT_CHANCE, ITEM_SEARCH_RADIUS } from '../config/ai';
 import { ACTION_POINTS, actionCost } from '../config/turn';
 import { WEAPONS } from '../config/weapons';
@@ -10,7 +11,7 @@ import { findPath, canStep } from '../map/pathfinding';
 import { chance, nextInt, type RngState } from '../rng';
 import type { Action, Actor, GameState, MonsterActor, Plan, Position } from '../types';
 import { canAttack } from './combat';
-import { swapOut } from './plan';
+import { equip } from './plan';
 
 interface Goal<T> {
   readonly target: T;
@@ -66,7 +67,8 @@ function aimAt(
  * замечает игроков и предметы, только если видит их (то же поле зрения, что у игроков),
  * удар стоит столько же ОД (меч — 2). apLeft — сколько ОД осталось в этом ходу.
  *
- * 1. Безоружный, а в рюкзаке есть оружие → берёт лучшее в руки.
+ * 1. Безоружный, а в рюкзаке есть оружие → берёт лучшее в руки; без брони, а в рюкзаке есть
+ *    броня → надевает лучшую.
  * 2. Игрок в досягаемости и на удар хватает ОД → бьёт (туда, где тот стоит, или куда может отойти).
  * 3. Безоружный с пустым рюкзаком и оружие рядом → идёт за ним.
  * 4. Игрок в радиусе агрессии → идёт к нему.
@@ -82,6 +84,11 @@ export function chooseMonsterAction(
   const weapons = monster.backpack.filter(isWeapon);
   if (!monster.weapon && weapons.length > 0) {
     const best = [...weapons].sort((a, b) => WEAPONS[b.type].damage - WEAPONS[a.type].damage)[0];
+    if (best) return [{ type: 'equip', itemId: best.id }, rng];
+  }
+  const armors = monster.backpack.filter(isArmor);
+  if (!monster.armor && armors.length > 0) {
+    const best = [...armors].sort((a, b) => ARMORS[b.type].defense - ARMORS[a.type].defense)[0];
     if (best) return [{ type: 'equip', itemId: best.id }, rng];
   }
 
@@ -117,8 +124,8 @@ export function chooseMonsterAction(
 
 /**
  * План монстра на ход: действия, пока хватает ОД. Следующее выбирается так, будто предыдущее
- * удалось (шагнул — уже на новой клетке, взял оружие — оно в руках); игроков бот считает
- * стоящими на месте — их выбор ему неизвестен, как и игрокам выбор бота.
+ * удалось (шагнул — уже на новой клетке, взял оружие — оно в руках, надел броню — она на нём);
+ * игроков бот считает стоящими на месте — их выбор ему неизвестен, как и игрокам выбор бота.
  */
 export function chooseMonsterPlan(
   state: GameState,
@@ -138,9 +145,7 @@ export function chooseMonsterPlan(
     if (action.type === 'move' && canStep(state.map, self.pos, action.direction)) {
       self = { ...self, pos: step(self.pos, action.direction) };
     } else if (action.type === 'equip') {
-      const item = self.backpack.find((i) => i.id === action.itemId);
-      if (item && isWeapon(item))
-        self = { ...self, weapon: item, backpack: swapOut(self.backpack, item, self.weapon) };
+      self = equip(self, action.itemId) ?? self;
     }
   }
   return [plan, next];

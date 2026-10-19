@@ -3,6 +3,8 @@ import {
   PRICES,
   SHOP_STOCK,
   WEAPONS,
+  ARMORS,
+  isArmorType,
   BACKPACK_SIZE,
   applyHubAction,
   itemAt,
@@ -29,6 +31,7 @@ function stats(type: ItemType): string {
   if (type === 'potion') {
     return `лечит половину HP (+${potionHeal(PLAYER_MAX_HP)}), выпить — ${POTION.cost} ОД`;
   }
+  if (isArmorType(type)) return `броня: каждый удар по вам −${ARMORS[type].defense} урона`;
   const { damage, range, cost } = WEAPONS[type];
   return `урон ${damage}, дальн. ${range}, ${cost} ОД`;
 }
@@ -39,7 +42,7 @@ export interface HubSceneData {
 }
 
 /**
- * Лагерь между забегами: магазин, снаряжение (руки и рюкзак — идут в забег) и сундук.
+ * Лагерь между забегами: магазин, снаряжение (руки, броня и рюкзак — идут в забег) и сундук.
  * Профиль живёт на сервере: кнопка шлёт действие (HubAction), сервер применяет его правилами
  * из shared и возвращает новый профиль, сцена перерисовывается (scene.restart). Какие кнопки
  * показать, сцена решает теми же правилами — чтобы не предлагать заведомо невозможное.
@@ -101,10 +104,11 @@ export class HubScene extends Phaser.Scene {
     let y = top + 84;
     // При узком экране колонки встают друг под другом.
     const shopY = y;
-    y = this.drawShop(profile, col(0), shopY);
-    const gearY = columns > 1 ? shopY : y + 24;
-    y = this.drawGear(profile, col(1), gearY);
-    const chestY = columns > 2 ? shopY : y + 24;
+    const shopEnd = this.drawShop(profile, col(0), shopY);
+    const gearY = columns > 1 ? shopY : shopEnd + 24;
+    const gearEnd = this.drawGear(profile, col(1), gearY);
+    // Две колонки — сундук встаёт в колонку магазина: ниже и магазина, и снаряжения.
+    const chestY = columns > 2 ? shopY : Math.max(shopEnd, gearEnd) + 24;
     this.drawChest(profile, col(2), chestY, height);
   }
 
@@ -135,6 +139,9 @@ export class HubScene extends Phaser.Scene {
     this.ui.text(x, y, 'В руках:', UI_COLORS.muted);
     y += 22;
     y = this.drawItem(profile, x, y, { place: 'hands' }, ['backpack', 'chest']);
+    this.ui.text(x, y, 'Броня:', UI_COLORS.muted);
+    y += 22;
+    y = this.drawItem(profile, x, y, { place: 'armor' }, ['backpack', 'chest']);
     this.ui.text(x, y, `Рюкзак (${profile.backpack.length}/${BACKPACK_SIZE}):`, UI_COLORS.muted);
     y += 22;
     if (profile.backpack.length === 0) {
@@ -142,7 +149,7 @@ export class HubScene extends Phaser.Scene {
       y += ROW_HEIGHT;
     }
     profile.backpack.forEach((_, index) => {
-      y = this.drawItem(profile, x, y, { place: 'backpack', index }, ['hands', 'chest']);
+      y = this.drawItem(profile, x, y, { place: 'backpack', index }, ['hands', 'armor', 'chest']);
     });
     this.ui.text(x, y, 'Погибнете — снаряжение пропадёт.', UI_COLORS.muted);
     return y + 24;
@@ -158,7 +165,8 @@ export class HubScene extends Phaser.Scene {
       if (y > height - ROW_HEIGHT) break;
       const count = profile.chest.filter((t) => t === type).length;
       const index = profile.chest.indexOf(type);
-      y = this.drawItem(profile, x, y, { place: 'chest', index }, ['hands', 'backpack'], count);
+      const targets = ['hands', 'armor', 'backpack'] as const;
+      y = this.drawItem(profile, x, y, { place: 'chest', index }, targets, count);
     }
   }
 
@@ -172,12 +180,18 @@ export class HubScene extends Phaser.Scene {
     count = 1,
   ): number {
     const type = itemAt(profile, slot);
-    const name = type ? ITEM_NAMES[type] : ITEM_NAMES.none;
+    const empty = slot.place === 'armor' ? ITEM_NAMES.noArmor : ITEM_NAMES.none;
+    const name = type ? ITEM_NAMES[type] : empty;
     const label = this.ui.text(0, 0, `${name}${count > 1 ? ` ×${count}` : ''}`.padEnd(11));
     label.setPadding(0, 6, 0, 6);
     const row: Phaser.GameObjects.Text[] = [label];
     if (type) {
-      const titles = { hands: 'в руки', backpack: 'в рюкзак', chest: 'в сундук' } as const;
+      const titles = {
+        hands: 'в руки',
+        armor: 'надеть',
+        backpack: 'в рюкзак',
+        chest: 'в сундук',
+      } as const;
       for (const to of targets) {
         this.addButton(row, profile, titles[to], { type: 'move', from: slot, to });
       }
