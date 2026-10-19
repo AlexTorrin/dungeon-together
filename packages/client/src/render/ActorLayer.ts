@@ -10,9 +10,18 @@ import {
   type GameState,
   type PlayerId,
   type Position,
+  type WeaponType,
 } from '@dt/shared';
 import type { Look } from '../assetKeys';
-import { BUMP_DURATION_MS, DAMAGE_FLOAT_MS, DEPTH, MOVE_DURATION_MS, ZOOM } from '../config';
+import type { Sfx, SfxName } from '../audio/sfx';
+import {
+  BUMP_DURATION_MS,
+  DAMAGE_FLOAT_MS,
+  DEPTH,
+  MOVE_DURATION_MS,
+  TILE_SIZE,
+  ZOOM,
+} from '../config';
 import type { UiOverlay } from '../ui/UiOverlay';
 import { lookOfActor } from './actorLooks';
 import { CombatFx, HIT_MS } from './combatFx';
@@ -27,6 +36,12 @@ const HP_COLORS = { player: 0x8fdc6a, monster: 0xe0503a, back: 0x1a0d13 } as con
 /** Подпись с именем: низ подписи — столько пикселей над центром спрайта (выше отметки «готов»). */
 const NAME_OFFSET_Y = -12;
 const NAME_COLORS = { mine: '#f2d17a', other: '#e8dcc8' } as const;
+
+/** Звук удара: издалека — тетива или заряд палочки, рядом — свист взмаха. */
+function strikeSound(weapon: WeaponType | null, ranged: boolean): SfxName {
+  if (!ranged) return 'swing';
+  return weapon === 'wand' ? 'wand' : 'bow';
+}
 
 /** Имена игроков над героями (сетевая игра); в одиночной — пусто, подписей нет. */
 export interface PlayerLabels {
@@ -75,6 +90,8 @@ export class ActorLayer {
     /** Вызывается, когда закончилась последняя анимация. */
     private readonly onIdle: () => void,
     private readonly labels: PlayerLabels | null = null,
+    /** Звуки — только того, что видно, и в момент своей анимации. */
+    private readonly sfx: Sfx | null = null,
   ) {
     this.fx = new CombatFx(scene, ui, (config) => this.animate(config));
   }
@@ -154,6 +171,7 @@ export class ActorLayer {
         this.face(sprite, event.direction);
         const [x, y] = tileCenter(event.to);
         this.animate({ targets: sprite, x, y, duration: MOVE_DURATION_MS });
+        if (sprite.visible) this.sfx?.play('step');
         return;
       }
       case 'bumped': {
@@ -168,6 +186,7 @@ export class ActorLayer {
           duration: BUMP_DURATION_MS / 2,
           yoyo: true,
         });
+        if (sprite.visible) this.sfx?.play('bump');
         return;
       }
       case 'attacked': {
@@ -179,7 +198,11 @@ export class ActorLayer {
           const dx = target[0] - sprite.x;
           if (dx !== 0) sprite.setFlipX(dx < 0);
           const weapon = this.state?.actors[event.actorId]?.weapon?.type ?? null;
-          if (sprite.visible) impact = this.fx.strike(sprite, target, weapon, MOVE_DURATION_MS);
+          if (sprite.visible) {
+            impact = this.fx.strike(sprite, target, weapon, MOVE_DURATION_MS);
+            const tiles = Math.max(Math.abs(dx), Math.abs(target[1] - sprite.y)) / TILE_SIZE;
+            this.sfx?.play(strikeSound(weapon, Math.round(tiles) > 1), MOVE_DURATION_MS);
+          }
         }
         this.impactAt.set(event.actorId, impact);
         return;
@@ -191,6 +214,7 @@ export class ActorLayer {
         if (!sprite?.visible) return; // урон по невидимому — не показываем
         const attacker = this.spriteOf(event.by);
         this.fx.hit(sprite, attacker ? [attacker.x, attacker.y] : null, at);
+        this.sfx?.play('hit', at);
         // Полоска HP падает в момент попадания (у погибшего актора в состоянии уже нет — 0).
         const maxHp = this.state?.actors[event.actorId]?.maxHp;
         const ratio = maxHp ? Math.max(0, event.hp) / maxHp : 0;
@@ -202,12 +226,15 @@ export class ActorLayer {
       case 'died': {
         // Погибший гаснет после вспышки попадания; убирает спрайт сверка в конце хода.
         const view = this.views.get(event.actorId);
-        if (view?.sprite.visible)
+        if (view?.sprite.visible) {
+          const at = this.hitDelay(event.actorId) + HIT_MS;
           this.fx.death(
             view.sprite,
             [view.hpBack, view.hpFill, ...(view.label ? [view.label] : [])],
-            this.hitDelay(event.actorId) + HIT_MS,
+            at,
           );
+          this.sfx?.play('death', at);
+        }
         return;
       }
       default:

@@ -35,7 +35,8 @@ import {
   type Position,
 } from '@dt/shared';
 import { ANIMATIONS, lookOf } from '../assetKeys';
-import { INTENT_COLORS, TILE_SIZE, UI_COLORS, ZOOM } from '../config';
+import { Sfx } from '../audio/sfx';
+import { INTENT_COLORS, MOVE_DURATION_MS, TILE_SIZE, UI_COLORS, ZOOM } from '../config';
 import type { GameSession } from '../game/GameSession';
 import { LocalGame } from '../game/LocalGame';
 import type { NetworkGame } from '../game/NetworkGame';
@@ -75,6 +76,7 @@ const KEYS = {
   aim: [K.F],
   nextTarget: [K.TAB],
   help: [K.H],
+  mute: [K.M],
   back: [K.ESC],
 } as const;
 type KeyRole = keyof typeof KEYS;
@@ -175,6 +177,9 @@ export class GameScene extends Phaser.Scene {
   private lastLog = '';
   /** Имена акторов и предметов — помним и тех, кто уже погиб или исчез с пола. */
   private names = new Map<string, string>();
+  /** Что за вещь лежала на полу (монеты звучат иначе, чем остальное) — после подбора её нет. */
+  private lootKinds = new Map<string, GroundItem['kind']>();
+  private sfx!: Sfx;
   /** Клетка, к которой идём мышью; шаги к ней выбираются сами, ход за ходом. */
   private goal: Position | null = null;
   private hover: Position | null = null;
@@ -235,6 +240,7 @@ export class GameScene extends Phaser.Scene {
     this.lastLog = '';
     this.phase = 1;
     this.names = new Map();
+    this.lootKinds = new Map();
     this.goal = null;
     this.hover = null;
     this.aim = null;
@@ -255,12 +261,16 @@ export class GameScene extends Phaser.Scene {
     this.intents = new IntentLayer(this, ui);
     // Имена над героями — в сетевой игре (в одиночной герой один, подписывать некого).
     const labels = this.net ? { names: this.playerNames, mine: this.myId } : null;
+    const sfx = new Sfx(this.sound);
+    this.sfx = sfx;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => sfx.destroy());
     this.actors = new ActorLayer(
       this,
       ui,
       new Map([[this.myId, LOCAL_LOOK]]),
       () => this.onIdle(),
       labels,
+      sfx,
     );
     this.popup = new ActionPopup(this, ui);
     this.rememberNames(state);
@@ -371,6 +381,10 @@ export class GameScene extends Phaser.Scene {
   private onKey(code: number): void {
     if (this.is('help', code) || (this.hud.helpOpen && this.is('back', code))) {
       this.hud.toggleHelp();
+      return;
+    }
+    if (this.is('mute', code)) {
+      this.ui.toast(this.sfx.toggleMute() ? 'Звук выключен (M)' : 'Звук включён (M)');
       return;
     }
     if (this.is('back', code)) {
@@ -906,6 +920,7 @@ export class GameScene extends Phaser.Scene {
 
   private playEvent(event: GameEvent): void {
     this.actors.play(event);
+    this.playSound(event);
     switch (event.type) {
       case 'planSubmitted':
         this.actors.setReady(event.playerId, true);
@@ -978,6 +993,38 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Звуки событий вне боя (бой и шаги звучат в ActorLayer, вместе с анимациями). Подбор, «надеть»
+   * и дверь случаются после шагов фазы — звучат, когда шаг закончился. Чужое — только если видно.
+   */
+  private playSound(event: GameEvent): void {
+    const seen = (id: string): boolean =>
+      id === this.myId || this.actors.spriteOf(id)?.visible === true;
+    switch (event.type) {
+      case 'itemPickedUp':
+        if (seen(event.actorId)) {
+          const coins = this.lootKinds.get(event.itemId) === 'coins';
+          this.sfx.play(coins ? 'coin' : 'pickup', MOVE_DURATION_MS);
+        }
+        return;
+      case 'itemEquipped':
+        if (seen(event.actorId)) this.sfx.play('equip', MOVE_DURATION_MS);
+        return;
+      case 'drank':
+        if (seen(event.actorId)) this.sfx.play('drink', MOVE_DURATION_MS);
+        return;
+      case 'doorOpened':
+      case 'exited':
+        this.sfx.play('door', MOVE_DURATION_MS);
+        return;
+      case 'gameOver':
+        this.sfx.play(event.status === 'won' ? 'won' : 'lost', MOVE_DURATION_MS);
+        return;
+      default:
+        return;
+    }
+  }
+
   /** По вашему герою попали — камера вздрагивает в момент удара. */
   private shakeOnHit(): void {
     this.time.delayedCall(this.actors.hitDelay(this.myId), () =>
@@ -991,7 +1038,10 @@ export class GameScene extends Phaser.Scene {
       this.names.set(actor.id, actor.kind === 'monster' ? SPECIES_NAMES[actor.species] : 'игрок');
       for (const item of carriedItems(actor)) this.names.set(item.id, ITEM_NAMES[item.type]);
     }
-    for (const item of Object.values(state.items)) this.names.set(item.id, lootName(item));
+    for (const item of Object.values(state.items)) {
+      this.names.set(item.id, lootName(item));
+      this.lootKinds.set(item.id, item.kind);
+    }
     for (const [id, name] of Object.entries(this.playerNames)) this.names.set(id, name);
     this.names.set(this.myId, 'вы');
   }
