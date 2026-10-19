@@ -259,8 +259,10 @@ export class GameScene extends Phaser.Scene {
     this.fog = new FogLayer(this, ui);
     this.items = new ItemLayer(this, ui);
     this.intents = new IntentLayer(this, ui);
-    // Имена над героями — в сетевой игре (в одиночной герой один, подписывать некого).
-    const labels = this.net ? { names: this.playerNames, mine: this.myId } : null;
+    // Имена над героями — когда игроков несколько (одиночный забег тоже идёт через сервер, но
+    // подписывать там некого).
+    const together = Object.keys(this.playerNames).length > 1;
+    const labels = together ? { names: this.playerNames, mine: this.myId } : null;
     const sfx = new Sfx(this.sound);
     this.sfx = sfx;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => sfx.destroy());
@@ -978,7 +980,7 @@ export class GameScene extends Phaser.Scene {
       case 'drank':
         if (event.actorId === this.myId) this.log(`вы выпили баночку: +${event.healed} HP`);
         else if (this.actors.spriteOf(event.actorId)?.visible)
-          this.log(`${this.names.get(event.actorId) ?? '?'} выпил баночку`);
+          this.log(`${this.names.get(event.actorId) ?? '?'} выпивает баночку`);
         break;
       case 'moved':
       case 'bumped':
@@ -1046,7 +1048,10 @@ export class GameScene extends Phaser.Scene {
     this.names.set(this.myId, 'вы');
   }
 
-  /** Строка лога хода — только про героя и тех, кого видно. */
+  /**
+   * Строка лога хода — только про героя и тех, кого видно. Про других — в настоящем времени:
+   * оно не зависит от рода («Аня погибает», «скелет подбирает»), а имя игрока род не выдаёт.
+   */
   private logEvent(event: GameEvent): void {
     const name = (id: string): string => this.names.get(id) ?? '?';
     const seen = (id: string): boolean =>
@@ -1055,16 +1060,16 @@ export class GameScene extends Phaser.Scene {
       case 'damaged':
         if (event.by === this.myId) this.log(`вы попали: ${name(event.actorId)} −${event.amount}`);
         else if (event.actorId === this.myId)
-          this.log(`${name(event.by)} попал по вам −${event.amount}`);
+          this.log(`${name(event.by)} попадает по вам −${event.amount}`);
         return;
       case 'died':
         if (seen(event.actorId))
-          this.log(event.actorId === this.myId ? 'вы погибли' : `${name(event.actorId)} убит`);
+          this.log(event.actorId === this.myId ? 'вы погибли' : `${name(event.actorId)} погибает`);
         return;
       case 'itemPickedUp':
         if (seen(event.actorId)) {
           const who =
-            event.actorId === this.myId ? 'вы подобрали' : `${name(event.actorId)} подобрал`;
+            event.actorId === this.myId ? 'вы подобрали' : `${name(event.actorId)} подбирает`;
           this.log(`${who}: ${name(event.itemId)}`);
         }
         return;
@@ -1083,7 +1088,11 @@ export class GameScene extends Phaser.Scene {
         this.log(event.actorId === this.myId ? 'вы открыли дверь' : 'дверь открыта');
         return;
       case 'exited':
-        this.log(event.actorId === this.myId ? 'вы вышли из подземелья' : 'союзник вышел');
+        this.log(
+          event.actorId === this.myId
+            ? 'вы вышли из подземелья'
+            : `${name(event.actorId)} выходит из подземелья`,
+        );
         return;
       case 'itemDropped':
         if (event.actorId === this.myId) this.log(`вы выбросили: ${name(event.itemId)}`);
@@ -1206,7 +1215,9 @@ export class GameScene extends Phaser.Scene {
         `броня: ${ITEM_NAMES[loot.armor?.type ?? 'noArmor']} · ` +
         `в рюкзаке: ${loot.backpack.map((i) => ITEM_NAMES[i.type]).join(', ') || 'пусто'}`
       : 'Всё, что вы несли, потеряно';
-    this.ui.text(width / 2, height / 2 + 26, summary).setOrigin(0.5);
+    // Тренировка (демо и свои комнаты): ничего не теряется и не выносится.
+    const practice = 'Тренировка — снаряжение и добыча не сохраняются';
+    this.ui.text(width / 2, height / 2 + 26, this.isRun ? summary : practice).setOrigin(0.5);
     if (this.isRun && loot) {
       // Сервер вернул вынесенное в профиль в тот же момент, как мы вышли.
       this.ui.text(width / 2, height / 2 + 78, 'Добыча — в лагере', UI_COLORS.muted).setOrigin(0.5);
