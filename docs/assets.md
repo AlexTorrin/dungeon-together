@@ -23,6 +23,8 @@
 | `items and trap_animation/keys/keys_1_*`               | ключ на полу, 4 кадра                                                                              |
 | `custom/walls.png`                                     | **все стены карты** — атлас под каждое сочетание соседей, собран из кусков тайлсета пака, см. ниже |
 | `items and trap_animation/torch/torch_*`               | факелы на стенах, 4 кадра                                                                          |
+| `custom/campfire.png`                                  | костёр в лагере: 4 кадра 16×16 в ленту — **свой спрайт** (цвета пламени — с факела пака)           |
+| `items and trap_animation/chest/chest_1.png`           | сундук в лагере (рядом с костром)                                                                  |
 
 Ключи и пути — в `packages/client/src/assetKeys.ts`, какой актор как выглядит — в
 `packages/client/src/render/actorLooks.ts`.
@@ -92,7 +94,7 @@
 ASCII-сеткой 16×16 прямо в скрипте, цвета — таблицей, обводку добавляет `renderSprite`.
 
 ```bash
-node tools/sprites/knife.mjs              # пересобрать assets/custom/knife.png (так же bow, sword, wand, leather, mail, door)
+node tools/sprites/knife.mjs              # пересобрать assets/custom/knife.png (так же bow, sword, wand, leather, mail, door, campfire)
 node tools/sprites/knife.mjs preview.png  # заодно превью ×10 на плитке пола
 ```
 

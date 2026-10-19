@@ -5,6 +5,7 @@ export const TEXTURES = {
   tileset: 'tileset',
   characters: 'characters',
   walls: 'walls',
+  campfire: 'campfire',
 } as const;
 
 export const ASSET_PATHS = {
@@ -25,6 +26,10 @@ export const ASSET_PATHS = {
   walls: 'custom/walls.png',
   /** Летящая стрела лука (из пака; смотрит вниз). */
   arrow: 'items and trap_animation/arrow/Just_arrow.png',
+  /** Костёр в лагере: 4 кадра 16×16 в ленту (tools/sprites/campfire.mjs). */
+  campfire: 'custom/campfire.png',
+  /** Сундук в лагере (из пака). */
+  chest: 'items and trap_animation/chest/chest_1.png',
 } as const;
 
 export interface FrameAnimation {
@@ -98,6 +103,7 @@ export interface SheetAnimation {
 export const SHEET_ANIMATIONS = {
   // Dungeon_Character_2.png: кадры 2 и 3 — персонаж в шляпе с оружием в двух позах.
   ranger: { key: 'ranger-idle', texture: TEXTURES.characters, frames: [2, 3], frameRate: 3 },
+  campfire: { key: 'campfire', texture: TEXTURES.campfire, frames: [0, 1, 2, 3], frameRate: 8 },
 } as const satisfies Record<string, SheetAnimation>;
 
 /** Как выглядит персонаж: стартовая текстура/кадр и ключ зацикленной анимации. */

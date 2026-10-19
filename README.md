@@ -50,7 +50,7 @@ pnpm format       # prettier --write
 | Игра: выбор хода с подтверждением, 8 направлений, удары по клеткам, мышь, намерения на карте, HP, урон     | `packages/client/src/scenes/GameScene.ts`                      |
 | Редактор комнат: стены/пол/старт, монстры и оружие, размер, сохранение в localStorage, экспорт ASCII, тест | `packages/client/src/scenes/RoomEditorScene.ts`                |
 | Логика: одновременные ходы, бой, оружие, смерть и предметы, ИИ монстров, поиск пути (с тестами)            | `packages/shared/src/`                                         |
-| Лагерь: магазин (нож, лук, кожанка, баночка), продажа за полцены, снаряжение на забег, сундук              | `packages/client/src/scenes/HubScene.ts`                       |
+| Лагерь у костра: магазин, продажа за полцены, снаряжение на забег, сундук; иконки и значки характеристик   | `packages/client/src/scenes/HubScene.ts`                       |
 | Сетевая игра на 1–4: лобби с кодом комнаты, сервер авторитетен                                             | `packages/server/`, `packages/client/src/scenes/LobbyScene.ts` |
 | Отрисовка карты из тайлсета с автотайлингом стен                                                           | `packages/client/src/render/`                                  |
 
@@ -123,7 +123,7 @@ packages/
 assets/      графика из 2D Pixel Dungeon Asset Pack v2.0 (не редактируем; описание — docs/assets.md)
   custom/    свои спрайты в стиле пака (нож, стены под все сочетания соседей)
 docs/        архитектура и заметки
-tools/       sprites/ — скрипты, которые рисуют свои спрайты (knife.mjs, walls.mjs)
+tools/       sprites/ — скрипты, которые рисуют свои спрайты (knife.mjs, walls.mjs, campfire.mjs, …)
 .claude/     скил run-game для запуска и проверки игры агентом (Claude Code)
 ```
 

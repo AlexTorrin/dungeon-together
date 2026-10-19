@@ -59,7 +59,8 @@ export class UiOverlay {
           backgroundColor: UI_COLORS.buttonSelected,
           padding: { x: 10, y: 6 },
         })
-        .setOrigin(0.5),
+        .setOrigin(0.5)
+        .setScrollFactor(0), // экран можно прокручивать (лагерь) — тост остаётся на месте
     );
     this.scene.tweens.add({
       targets: t,

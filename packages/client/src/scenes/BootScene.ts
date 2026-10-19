@@ -13,6 +13,7 @@ export class BootScene extends Phaser.Scene {
     const sheet = { frameWidth: TILE_SIZE, frameHeight: TILE_SIZE };
     this.load.spritesheet(TEXTURES.tileset, ASSET_PATHS.tileset, sheet);
     this.load.spritesheet(TEXTURES.characters, ASSET_PATHS.characters, sheet);
+    this.load.spritesheet(TEXTURES.campfire, ASSET_PATHS.campfire, sheet);
     for (const path of [
       ASSET_PATHS.knifeItem,
       ASSET_PATHS.bowItem,
@@ -23,6 +24,7 @@ export class BootScene extends Phaser.Scene {
       ASSET_PATHS.doorClosed,
       ASSET_PATHS.doorOpen,
       ASSET_PATHS.arrow,
+      ASSET_PATHS.chest,
     ]) {
       this.load.image(path, path);
     }
