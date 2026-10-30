@@ -13,6 +13,7 @@ A comprehensive verification system for Claude Code sessions.
 ## When to Use
 
 Invoke this skill:
+
 - After completing a feature or significant code change
 - Before creating a PR
 - When you want to ensure quality gates pass
@@ -21,6 +22,7 @@ Invoke this skill:
 ## Verification Phases
 
 ### Phase 1: Build Verification
+
 ```bash
 set -o pipefail  # report the build's exit status, not tail's
 # Check if project builds
@@ -32,6 +34,7 @@ pnpm build 2>&1 | tail -20
 If build fails, STOP and fix before continuing.
 
 ### Phase 2: Type Check
+
 ```bash
 set -o pipefail
 # TypeScript projects
@@ -47,6 +50,7 @@ Report all type errors. Fix critical ones before continuing.
 
 Use `sed` to limit displayed output while consuming the whole stream. This keeps a
 successful linter from failing on SIGPIPE when `pipefail` is enabled.
+
 ```bash
 set -o pipefail
 # JavaScript/TypeScript
@@ -57,6 +61,7 @@ ruff check . 2>&1 | sed -n '1,30p'
 ```
 
 ### Phase 4: Test Suite
+
 ```bash
 set -o pipefail
 # Run tests with coverage
@@ -67,12 +72,14 @@ npm run test -- --coverage 2>&1 | tail -50
 ```
 
 Report:
+
 - Total tests: X
 - Passed: X
 - Failed: X
 - Coverage: X%
 
 ### Phase 5: Security Scan
+
 ```bash
 # Check for secrets
 grep -rn "sk-" --include="*.ts" --include="*.js" . 2>/dev/null | head -10
@@ -83,6 +90,7 @@ grep -rn "console.log" --include="*.ts" --include="*.tsx" src/ 2>/dev/null | hea
 ```
 
 ### Phase 6: Diff Review
+
 ```bash
 # Show what changed
 git diff --stat
@@ -90,6 +98,7 @@ git diff HEAD~1 --name-only
 ```
 
 Review each changed file for:
+
 - Unintended changes
 - Missing error handling
 - Potential edge cases
@@ -122,6 +131,7 @@ For long sessions, run verification every 15 minutes or after major changes:
 
 ```markdown
 Set a mental checkpoint:
+
 - After completing each function
 - After finishing a component
 - Before moving to next task

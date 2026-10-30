@@ -14,6 +14,7 @@ bash .claude/skills/run-game/scripts/setup.sh
 ```
 
 Что делает:
+
 - Если pnpm не может создавать симлинки в репозитории (папка смонтирована с Windows →
   `Failed to create symlink ... Operation not permitted`), ставит зависимости в **зеркало**
   `/tmp/dt-run/ws` (rsync исходников, `assets` — симлинк на оригинал). Иначе — `pnpm install` на месте.

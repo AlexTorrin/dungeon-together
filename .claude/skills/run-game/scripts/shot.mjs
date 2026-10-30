@@ -36,7 +36,10 @@ async function openPage() {
   const tag = pages.length ? `[page ${pages.length + 1}] ` : '';
   p.on('pageerror', (e) => problems.push(`${tag}pageerror: ${e.message}`));
   p.on('console', (m) => m.type() === 'error' && problems.push(`${tag}console.error: ${m.text()}`));
-  p.on('response', (r) => r.status() >= 400 && problems.push(`${tag}HTTP ${r.status()} ${r.url()}`));
+  p.on(
+    'response',
+    (r) => r.status() >= 400 && problems.push(`${tag}HTTP ${r.status()} ${r.url()}`),
+  );
   p.on('dialog', (d) => (d.type() === 'prompt' ? d.accept(dialogAnswer) : d.accept()));
   await p.goto(url);
   await p.waitForSelector('#game canvas', { timeout: 15000 });

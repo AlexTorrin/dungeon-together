@@ -3,16 +3,19 @@
 ## Model Selection Strategy
 
 **Haiku** (90% of Sonnet capability, 3x cost savings):
+
 - Lightweight agents with frequent invocation
 - Pair programming and code generation
 - Worker agents in multi-agent systems
 
 **Sonnet** (Best coding model):
+
 - Main development work
 - Orchestrating multi-agent workflows
 - Complex coding tasks
 
 **Opus** (Deepest reasoning):
+
 - Complex architectural decisions
 - Maximum reasoning requirements
 - Research and analysis tasks
@@ -20,11 +23,13 @@
 ## Context Window Management
 
 Avoid last 20% of context window for:
+
 - Large-scale refactoring
 - Feature implementation spanning multiple files
 - Debugging complex interactions
 
 Lower context sensitivity tasks:
+
 - Single-file edits
 - Independent utility creation
 - Documentation updates
@@ -37,6 +42,7 @@ For Fable models, Sonnet 5 and later, and Opus 4.7 and later, use effort to cont
 rather than a fixed token budget. Available levels depend on the model.
 
 Control thinking via:
+
 - **Effort**: Use `/effort` in a session, `--effort <level>` at launch, or `CLAUDE_CODE_EFFORT_LEVEL`. Save a per-model level in `modelSettings` in `~/.claude/settings.json`; the older user-level `effortLevel` key does not apply to Opus 5.5 or newer models.
 - **Toggle**: Option+T (macOS) / Alt+T (Windows/Linux), or `alwaysThinkingEnabled` in settings. These cannot disable thinking on Opus 5.5, Sonnet 5.5, or Fable models.
 - **Fixed budget**: Claude Code ignores positive `MAX_THINKING_TOKENS` values on adaptive reasoning models. On Opus 4.6 or Sonnet 4.6, set `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` to use a fixed budget with `MAX_THINKING_TOKENS`.
@@ -46,6 +52,7 @@ See [Claude Code model configuration](https://code.claude.com/docs/en/model-conf
 and [environment variables](https://code.claude.com/docs/en/env-vars) for supported controls.
 
 For complex tasks requiring deep reasoning:
+
 1. Choose a higher supported effort level, such as `/effort high`
 2. Enable **Plan Mode** for structured approach
 3. Use multiple critique rounds for thorough analysis
@@ -54,6 +61,7 @@ For complex tasks requiring deep reasoning:
 ## Build Troubleshooting
 
 If build fails:
+
 1. Use **build-error-resolver** agent
 2. Analyze error messages
 3. Fix incrementally

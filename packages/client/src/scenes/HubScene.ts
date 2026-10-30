@@ -46,6 +46,7 @@ const FLOOR_SCALE = 3;
 const FLOOR_TINT = 0x8a7a80;
 const SPRITE_SCALE = 4;
 const FIRE_GLOW = 0xd1851e;
+const BACKGROUND_OPACITY = 0.6; // прозрачность для фона
 
 export interface HubSceneData {
   /** Профиль уже получен с сервера (перерисовка после действия); нет — запросить. */
@@ -156,16 +157,29 @@ export class HubScene extends Phaser.Scene {
 
   private drawCamp(width: number): void {
     const { height } = this.scale;
+    // Фон подземелья (растянутый на весь экран)
     this.ui.add(
       this.add
         .tileSprite(0, 0, width, height, TEXTURES.tileset, FLOOR_FRAME)
         .setOrigin(0)
         .setTileScale(FLOOR_SCALE)
         .setScrollFactor(0)
-        .setTint(FLOOR_TINT),
+        .setTint(FLOOR_TINT)
+        .setAlpha(BACKGROUND_OPACITY), // сделать фон полупрозрачным
     );
+
     const cx = width / 2;
-    const cy = HEADER / 2 + 6;
+    const cy = height / 2;
+
+    // Костер в фоне (растянутый на весь экран)
+    this.ui.add(
+      this.add
+        .sprite(cx, cy, TEXTURES.campfire, 0)
+        .setScale(SPRITE_SCALE * 3) // Увеличиваем масштаб для заполнения экрана
+        .play(SHEET_ANIMATIONS.campfire.key)
+        .setAlpha(BACKGROUND_OPACITY), // сделать костер полупрозрачным
+    );
+
     // Свет костра: два круга с аддитивным смешиванием (ADD — цвет прибавляется к фону, как
     // свет), мерцают твином с разной частотой — выглядит живее одного ровного пульса.
     const glow = (radius: number, alpha: number, ms: number): void => {
@@ -184,19 +198,23 @@ export class HubScene extends Phaser.Scene {
     };
     glow(150, 0.16, 420);
     glow(70, 0.26, 260);
+
+    // Герой в фоне (растянутый на весь экран)
     this.ui.add(
       this.add
-        .sprite(cx, cy, TEXTURES.campfire, 0)
-        .setScale(SPRITE_SCALE)
-        .play(SHEET_ANIMATIONS.campfire.key),
+        .sprite(cx - 84 * 3, cy + 4, firstFrame(ANIMATIONS.heroIdle))
+        .setScale(SPRITE_SCALE * 3) // Увеличиваем масштаб для заполнения экрана
+        .play(ANIMATIONS.heroIdle.key)
+        .setAlpha(BACKGROUND_OPACITY), // сделать героя полупрозрачным
     );
+
+    // Сундук в фоне (растянутый на весь экран)
     this.ui.add(
       this.add
-        .sprite(cx - 84, cy + 4, firstFrame(ANIMATIONS.heroIdle))
-        .setScale(SPRITE_SCALE)
-        .play(ANIMATIONS.heroIdle.key),
+        .image(cx + 84 * 3, cy + 8, ASSET_PATHS.chest)
+        .setScale(SPRITE_SCALE * 3) // Увеличиваем масштаб для заполнения экрана
+        .setAlpha(BACKGROUND_OPACITY),
     );
-    this.ui.add(this.add.image(cx + 84, cy + 8, ASSET_PATHS.chest).setScale(SPRITE_SCALE));
   }
 
   private drawWallet(coins: number, x: number, y: number): void {
