@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import Phaser from 'phaser';
 import {
   createEmptyRoom,
@@ -36,65 +37,115 @@ type Tool =
 const WALL: Tool = { kind: 'wall' };
 
 const TOOLS: readonly { tool: Tool; label: string; key: string }[] = [
-  { tool: WALL, label: '1 Стена', key: 'ONE' },
-  { tool: { kind: 'floor' }, label: '2 Пол', key: 'TWO' },
-  { tool: { kind: 'spawn' }, label: '3 Старт', key: 'THREE' },
+  {
+    tool: WALL,
+    get label() {
+      return t('roomEditor.wall');
+    },
+    key: 'ONE',
+  },
+  {
+    tool: { kind: 'floor' },
+    get label() {
+      return t('roomEditor.floor');
+    },
+    key: 'TWO',
+  },
+  {
+    tool: { kind: 'spawn' },
+    get label() {
+      return t('roomEditor.spawn');
+    },
+    key: 'THREE',
+  },
   {
     tool: { kind: 'entity', entity: { kind: 'monster', species: 'skeleton' } },
-    label: '4 Скелет',
+    get label() {
+      return t('roomEditor.skeleton');
+    },
     key: 'FOUR',
   },
   {
     tool: { kind: 'entity', entity: { kind: 'monster', species: 'skull' } },
-    label: '5 Череп',
+    get label() {
+      return t('roomEditor.skull');
+    },
     key: 'FIVE',
   },
   {
     tool: { kind: 'entity', entity: { kind: 'monster', species: 'vampire' } },
-    label: '6 Вампир',
+    get label() {
+      return t('roomEditor.vampire');
+    },
     key: 'SIX',
   },
   {
     tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'weapon', type: 'knife' } } },
-    label: '7 Нож',
+    get label() {
+      return t('roomEditor.knife');
+    },
     key: 'SEVEN',
   },
   {
     tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'weapon', type: 'bow' } } },
-    label: '8 Лук',
+    get label() {
+      return t('roomEditor.bow');
+    },
     key: 'EIGHT',
   },
   {
     tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'weapon', type: 'sword' } } },
-    label: '9 Меч',
+    get label() {
+      return t('roomEditor.sword');
+    },
     key: 'NINE',
   },
   {
     tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'weapon', type: 'wand' } } },
-    label: '0 Палочка',
+    get label() {
+      return t('roomEditor.wand');
+    },
     key: 'ZERO',
   },
 ];
 
 /** Второй ряд — без горячих клавиш: дверь-выход, монета, ключ, баночка, броня. */
 const EXTRA_TOOLS: readonly { tool: Tool; label: string }[] = [
-  { tool: { kind: 'door' }, label: 'Дверь' },
+  {
+    tool: { kind: 'door' },
+    get label() {
+      return t('roomEditor.door');
+    },
+  },
   {
     tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'coins', amount: 1 } } },
-    label: 'Монета',
+    get label() {
+      return t('roomEditor.coin');
+    },
   },
-  { tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'key' } } }, label: 'Ключ' },
+  {
+    tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'key' } } },
+    get label() {
+      return t('roomEditor.key');
+    },
+  },
   {
     tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'potion' } } },
-    label: 'Баночка',
+    get label() {
+      return t('roomEditor.potion');
+    },
   },
   {
     tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'armor', type: 'leather' } } },
-    label: 'Кожанка',
+    get label() {
+      return t('roomEditor.leather');
+    },
   },
   {
     tool: { kind: 'entity', entity: { kind: 'item', item: { kind: 'armor', type: 'mail' } } },
-    label: 'Кольчуга',
+    get label() {
+      return t('roomEditor.chainmail');
+    },
   },
 ];
 
@@ -105,7 +156,7 @@ const MARGIN = 24;
 function newDraft(): EditorDraft {
   return {
     id: null,
-    name: 'Новая комната',
+    name: t('roomEditor.newRoom'),
     room: createEmptyRoom(EDITOR.defaultWidth, EDITOR.defaultHeight),
     dirty: false,
   };
@@ -175,12 +226,12 @@ export class RoomEditorScene extends Phaser.Scene {
     const x = layoutRow(EXTRA_TOOLS.map(toolButton), 12, 50) + 18;
     const actionsEnd = layoutRow(
       [
-        btn('Новая', () => this.scene.restart({})),
-        btn('Сохранить', () => this.save()),
-        btn('Удалить', () => this.remove()),
+        btn(t('roomEditor.new'), () => this.scene.restart({})),
+        btn(t('roomEditor.save'), () => this.save()),
+        btn(t('menu.delete'), () => this.remove()),
         btn('ASCII', () => void this.copyAscii()),
-        btn('▶ Тест', () => this.test()),
-        btn('Меню', () => this.scene.start(SCENES.menu)),
+        btn(t('roomEditor.test'), () => this.test()),
+        btn(t('roomEditor.menu'), () => this.scene.start(SCENES.menu)),
       ],
       12,
       90,
@@ -191,10 +242,10 @@ export class RoomEditorScene extends Phaser.Scene {
     this.sizeLabel.setPadding(0, 6, 0, 6).setFixedSize(64, 0);
     layoutRow(
       [
-        btn('Ш−', () => this.resize(-1, 0)),
-        btn('Ш+', () => this.resize(1, 0)),
-        btn('В−', () => this.resize(0, -1)),
-        btn('В+', () => this.resize(0, 1)),
+        btn(t('roomEditor.shrinkWidth'), () => this.resize(-1, 0)),
+        btn(t('roomEditor.growWidth'), () => this.resize(1, 0)),
+        btn(t('roomEditor.shrinkHeight'), () => this.resize(0, -1)),
+        btn(t('roomEditor.growHeight'), () => this.resize(0, 1)),
         this.sizeLabel,
       ],
       x,
@@ -204,8 +255,7 @@ export class RoomEditorScene extends Phaser.Scene {
     ui.text(
       12,
       TOOLBAR_HEIGHT + 6,
-      'ЛКМ — рисовать · ПКМ — стена · 1–0 — инструмент (Пол стирает монстров, вещи и дверь) · ' +
-        'T — тест · Esc — меню',
+      t('roomEditor.lmbDrawRMBWallToolFloor') + t('roomEditor.tTestEscMenu'),
       UI_COLORS.muted,
     );
   }
@@ -280,14 +330,14 @@ export class RoomEditorScene extends Phaser.Scene {
   private save(): void {
     let { name } = this.draft;
     if (this.draft.id === null) {
-      const input = window.prompt('Название комнаты', name);
+      const input = window.prompt(t('roomEditor.roomName'), name);
       if (input === null) return;
       name = input.trim() || name;
     }
     const id = saveRoom(this.draft.id, name, this.draft.room);
     this.draft = { ...this.draft, id, name, dirty: false };
     this.refresh();
-    this.ui.toast(`Сохранено: ${name}`);
+    this.ui.toast(t('roomEditor.saved', name));
   }
 
   private remove(): void {
@@ -296,7 +346,7 @@ export class RoomEditorScene extends Phaser.Scene {
       this.scene.restart({});
       return;
     }
-    if (!window.confirm(`Удалить комнату «${name}»?`)) return;
+    if (!window.confirm(t('menu.deleteRoom', name))) return;
     deleteRoom(id);
     this.scene.restart({});
   }
@@ -305,10 +355,10 @@ export class RoomEditorScene extends Phaser.Scene {
     const ascii = serializeRoom(this.draft.room);
     try {
       await navigator.clipboard.writeText(ascii);
-      this.ui.toast('ASCII скопирован в буфер обмена');
+      this.ui.toast(t('roomEditor.asciiCopiedToClipboard'));
     } catch {
       console.log(ascii);
-      this.ui.toast('Буфер недоступен — ASCII выведен в консоль');
+      this.ui.toast(t('roomEditor.clipboardUnavailableASCIIPrintedToConsole'));
     }
   }
 
@@ -331,7 +381,12 @@ export class RoomEditorScene extends Phaser.Scene {
     this.selectTool(this.tool);
     this.sizeLabel.setText(`${room.map.width}×${room.map.height}`);
     this.title.setText(
-      `${name}${dirty ? ' *' : ''}${this.draft.id === null ? ' (не сохранена)' : ''}`,
+      t(
+        'roomEditor.draftTitle',
+        name,
+        dirty ? ' *' : '',
+        this.draft.id === null ? t('editor.unsaved') : '',
+      ),
     );
     this.fitCamera();
   }

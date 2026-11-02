@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import Phaser from 'phaser';
 import type { Room } from '@colyseus/sdk';
 import {
@@ -59,7 +60,7 @@ export class LobbyScene extends Phaser.Scene {
     const left = Math.max(24, width / 2 - 260);
     let y = Math.max(24, height / 2 - 220);
     this.ui.add(
-      this.add.text(left, y, this.solo ? 'Новое подземелье' : 'Сетевая игра', {
+      this.add.text(left, y, this.solo ? t('lobby.newDungeon') : t('lobby.onlineGame'), {
         fontFamily: 'monospace',
         fontSize: '32px',
         color: UI_COLORS.text,
@@ -79,7 +80,7 @@ export class LobbyScene extends Phaser.Scene {
       if (this.solo) this.drawSolo(lobby, left, y);
       else this.drawRoom(lobby, left, y);
     } else if (this.solo) {
-      this.ui.text(left, y, 'Готовим подземелье…', UI_COLORS.muted);
+      this.ui.text(left, y, t('lobby.preparingDungeon'), UI_COLORS.muted);
       const difficulty = this.solo;
       this.connect(() => createRoom({ difficulty, ...this.joinOptions() }));
     } else {
@@ -95,21 +96,16 @@ export class LobbyScene extends Phaser.Scene {
   // ---------- До подключения ----------
 
   private drawConnect(left: number, y: number): void {
-    const name = loadPlayerName() ?? 'Игрок';
-    const nameLabel = this.ui.text(0, 0, `Имя: ${name}`);
+    const name = loadPlayerName() ?? t('game.player');
+    const nameLabel = this.ui.text(0, 0, t('lobby.name', name));
     nameLabel.setPadding(0, 6, 0, 6);
-    const rename = this.ui.add(new TextButton(this, 0, 0, 'изменить', () => this.askName()));
+    const rename = this.ui.add(new TextButton(this, 0, 0, t('lobby.change'), () => this.askName()));
     layoutRow([nameLabel, rename], left, y);
     y += 40;
-    this.ui.text(
-      left,
-      y,
-      'С собой — то, что в руках и рюкзаке в лагере.\nУйдёт из профиля, когда хост начнёт забег.',
-      UI_COLORS.muted,
-    );
+    this.ui.text(left, y, t('lobby.youTakeYourEquippedItemsAnd'), UI_COLORS.muted);
     y += 56;
 
-    this.ui.text(left, y, 'Создать комнату:', UI_COLORS.muted);
+    this.ui.text(left, y, t('lobby.createARoom'), UI_COLORS.muted);
     y += 24;
     const create = DIFFICULTY_LIST.map((difficulty) =>
       this.ui.add(
@@ -121,8 +117,10 @@ export class LobbyScene extends Phaser.Scene {
     layoutRow(create, left, y);
     y += 52;
     y = this.drawCustomRooms(left, y);
-    const join = this.ui.add(new TextButton(this, 0, 0, 'Войти по коду', () => this.askCode()));
-    const back = this.ui.add(new TextButton(this, 0, 0, '← в меню (Esc)', () => this.goBack()));
+    const join = this.ui.add(
+      new TextButton(this, 0, 0, t('lobby.joinWithCode'), () => this.askCode()),
+    );
+    const back = this.ui.add(new TextButton(this, 0, 0, t('hub.menuEsc'), () => this.goBack()));
     layoutRow([join, back], left, y);
   }
 
@@ -130,12 +128,7 @@ export class LobbyScene extends Phaser.Scene {
   private drawCustomRooms(left: number, y: number): number {
     const rooms = loadRooms();
     if (rooms.length === 0) return y;
-    this.ui.text(
-      left,
-      y,
-      'Своя комната — тренировка: без снаряжения, добыча не сохраняется:',
-      UI_COLORS.muted,
-    );
+    this.ui.text(left, y, t('lobby.customRoomPracticeNoEquipmentLoot'), UI_COLORS.muted);
     y += 24;
     const buttons = rooms.slice(0, MAX_LISTED_ROOMS).map((saved) =>
       this.ui.add(
@@ -158,22 +151,22 @@ export class LobbyScene extends Phaser.Scene {
 
   /** Токен — по нему сервер найдёт профиль: возьмёт снаряжение и вернёт добычу. */
   private joinOptions(): JoinOptions {
-    return { name: loadPlayerName() ?? 'Игрок', token: playerToken() };
+    return { name: loadPlayerName() ?? t('game.player'), token: playerToken() };
   }
 
   private askName(): void {
-    const name = window.prompt('Как вас зовут?', loadPlayerName() ?? '');
+    const name = window.prompt(t('lobby.whatIsYourName'), loadPlayerName() ?? '');
     if (name === null) return;
     savePlayerName(name);
     this.redraw();
   }
 
   private askCode(): void {
-    const raw = window.prompt('Код комнаты (4 буквы):');
+    const raw = window.prompt(t('lobby.roomCodeLetters'));
     if (raw === null) return;
     const code = parseRoomCode(raw);
     if (!code) {
-      this.ui.toast('Код — 4 латинские буквы, например KQXT');
+      this.ui.toast(t('lobby.enterLatinLettersForExampleKQXT'));
       return;
     }
     this.connect(() => joinRoom(code, this.joinOptions()));
@@ -182,7 +175,7 @@ export class LobbyScene extends Phaser.Scene {
   private connect(open: () => Promise<Room>): void {
     if (this.connecting) return;
     this.connecting = true;
-    this.ui.toast('Подключаемся…');
+    this.ui.toast(t('lobby.connecting'));
     open()
       .then((room) => {
         if (!this.scene.isActive()) {
@@ -206,13 +199,13 @@ export class LobbyScene extends Phaser.Scene {
   private drawRoom(lobby: Lobby, left: number, y: number): void {
     const info = lobby.info;
     if (!info) {
-      this.ui.text(left, y, 'Входим в комнату…', UI_COLORS.muted);
+      this.ui.text(left, y, t('lobby.joiningRoom'), UI_COLORS.muted);
       return;
     }
     if (lobby.reconnecting) {
-      this.ui.text(left + 280, y, 'Связь пропала — переподключаемся…', UI_COLORS.text);
+      this.ui.text(left + 280, y, t('game.disconnectedReconnecting'), UI_COLORS.text);
     }
-    this.ui.text(left, y, 'Код комнаты — скажите его друзьям:', UI_COLORS.muted);
+    this.ui.text(left, y, t('lobby.roomCodeShareItWithFriends'), UI_COLORS.muted);
     y += 22;
     this.ui.add(
       this.add.text(left, y, info.code, {
@@ -227,35 +220,35 @@ export class LobbyScene extends Phaser.Scene {
       left,
       y,
       level.kind === 'custom'
-        ? `Своя комната: ${level.name} — тренировка, профиль не меняется`
-        : `Сложность: ${DIFFICULTY_NAMES[level.difficulty]}`,
+        ? t('lobby.customRoomPracticeNoProfileChanges', level.name)
+        : t('lobby.difficulty', DIFFICULTY_NAMES[level.difficulty]),
       UI_COLORS.muted,
     );
     y += 30;
-    this.ui.text(left, y, `Игроки (${info.players.length}/${MAX_PLAYERS}):`, UI_COLORS.muted);
+    this.ui.text(left, y, t('lobby.players', info.players.length, MAX_PLAYERS), UI_COLORS.muted);
     y += 24;
     for (const player of info.players) {
       const marks = [
-        player.playerId === info.host ? 'хост' : '',
-        player.playerId === info.you ? 'вы' : '',
+        player.playerId === info.host ? t('lobby.host') : '',
+        player.playerId === info.you ? t('game.you') : '',
       ].filter(Boolean);
       this.ui.text(left + 12, y, `${player.name}${marks.length ? ` (${marks.join(', ')})` : ''}`);
       y += 24;
     }
     y += 16;
-    const leave = this.ui.add(new TextButton(this, 0, 0, 'Выйти (Esc)', () => this.goBack()));
+    const leave = this.ui.add(new TextButton(this, 0, 0, t('lobby.leaveEsc'), () => this.goBack()));
     if (info.host === info.you) {
-      const start = this.ui.add(new TextButton(this, 0, 0, '▶ Начать', () => lobby.start()));
+      const start = this.ui.add(new TextButton(this, 0, 0, t('lobby.start'), () => lobby.start()));
       layoutRow([start, leave], left, y);
     } else {
       layoutRow([leave], left, y);
-      this.ui.text(left, y + 44, 'Ждём, пока хост начнёт…', UI_COLORS.muted);
+      this.ui.text(left, y + 44, t('lobby.waitingForTheHostToStart'), UI_COLORS.muted);
     }
   }
 
   /** Одиночный забег: как только комната готова — начинаем, лобби не показываем. */
   private drawSolo(lobby: Lobby, left: number, y: number): void {
-    this.ui.text(left, y, 'Готовим подземелье…', UI_COLORS.muted);
+    this.ui.text(left, y, t('lobby.preparingDungeon'), UI_COLORS.muted);
     if (lobby.info) lobby.start();
   }
 
@@ -264,7 +257,7 @@ export class LobbyScene extends Phaser.Scene {
     const left = Math.max(24, width / 2 - 260);
     const y = Math.max(24, height / 2 - 220) + 56;
     this.ui.text(left, y + 28, message);
-    const back = this.ui.add(new TextButton(this, 0, 0, '← в меню (Esc)', () => this.goBack()));
+    const back = this.ui.add(new TextButton(this, 0, 0, t('hub.menuEsc'), () => this.goBack()));
     layoutRow([back], left, y + 64);
   }
 
@@ -273,11 +266,11 @@ export class LobbyScene extends Phaser.Scene {
       this.lobby = null;
       if (this.solo) {
         // Не переподключаемся сами — иначе при упавшем сервере крутились бы по кругу.
-        this.showSoloError('Связь с сервером потеряна');
+        this.showSoloError(t('game.connectionToServerLost'));
         return;
       }
       this.redraw();
-      this.ui.toast('Связь с комнатой потеряна');
+      this.ui.toast(t('lobby.connectionToRoomLost'));
       return;
     }
     const started = lobby.started;
@@ -288,7 +281,10 @@ export class LobbyScene extends Phaser.Scene {
     }
     const names = Object.fromEntries(info.players.map((p) => [p.playerId, p.name]));
     const data: GameSceneData = {
-      title: started.title,
+      title:
+        info.level.kind === 'custom'
+          ? t('game.practiceTitle', info.level.name)
+          : t('game.dungeonTitle', DIFFICULTY_NAMES[info.level.difficulty]),
       back: { to: 'menu' },
       net: {
         session: started.session,

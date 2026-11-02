@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import Phaser from 'phaser';
 import {
   delta,
@@ -325,7 +326,7 @@ export class ActorLayer {
   /** Удар пришёлся в пустую клетку — «мимо» над ней (вызывающий проверяет, что клетку видно). */
   floatMiss(at: Position, attackerId: ActorId): void {
     const [x, y] = tileCenter(at);
-    this.floatText('мимо', '#b89a8c', this.impactDelay(attackerId), () => [x, y - 4]);
+    this.floatText(t('actor.miss'), '#b89a8c', this.impactDelay(attackerId), () => [x, y - 4]);
   }
 
   /**

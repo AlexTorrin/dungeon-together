@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import Phaser from 'phaser';
 import {
   RECONNECT_SECONDS,
@@ -110,12 +111,28 @@ function splitByPhase(events: readonly GameEvent[]): GameEvent[][] {
   return batches.filter((batch) => batch.length > 0);
 }
 
-const SPECIES_NAMES = { skeleton: 'скелет', skull: 'череп', vampire: 'вампир' } as const;
+const SPECIES_NAMES = {
+  get skeleton() {
+    return t('game.skeleton');
+  },
+  get skull() {
+    return t('game.skull');
+  },
+  get vampire() {
+    return t('game.vampire');
+  },
+} as const;
 
 const REJECT_TEXT: Readonly<Record<PlanRejectReason, string>> = {
-  gameOver: 'Игра уже закончилась',
-  alreadySubmitted: 'План на этот ход уже отправлен',
-  invalidPlan: 'Этот план не выполнить — переберите действия',
+  get gameOver() {
+    return t('game.theGameHasAlreadyEnded');
+  },
+  get alreadySubmitted() {
+    return t('game.yourPlanForThisTurnHas');
+  },
+  get invalidPlan() {
+    return t('game.thisPlanCannotBeCompletedChoose');
+  },
 };
 
 /** Вещь на полу словами — для лога. */
@@ -127,9 +144,9 @@ function lootName(item: GroundItem): string {
     case 'potion':
       return ITEM_NAMES.potion;
     case 'coins':
-      return item.amount === 1 ? 'монета' : `монеты ×${item.amount}`;
+      return item.amount === 1 ? t('game.coin') : t('game.coins', item.amount);
     case 'key':
-      return 'ключ';
+      return t('game.key');
   }
 }
 
@@ -295,7 +312,7 @@ export class GameScene extends Phaser.Scene {
       );
     this.updateCamera();
 
-    const backLabel = this.back.to === 'editor' ? 'в редактор' : 'в меню';
+    const backLabel = this.back.to === 'editor' ? t('game.toEditor') : t('game.toMenu');
     this.hud = new Hud(this, ui, backLabel, (slot) => {
       if (this.canChoose()) this.chooseItem(slot, 'equip');
     });
@@ -307,15 +324,15 @@ export class GameScene extends Phaser.Scene {
     const net = this.net;
     if (net) {
       // Связь оборвалась окончательно — сервер уже считает, что мы ушли: несённое потеряно.
-      net.onDisconnect = () => this.showGameOver('lost', 'Связь с сервером потеряна');
+      net.onDisconnect = () => this.showGameOver('lost', t('game.connectionToServerLost'));
       net.onConnection = (online) => this.setOffline(!online);
       net.onResync = (state) => this.resync(state);
       net.onPlayerStatus = (playerId, online) => {
-        const name = this.names.get(playerId) ?? 'Игрок';
+        const name = this.names.get(playerId) ?? t('game.player');
         this.ui.toast(
           online
-            ? `${name}: связь восстановлена`
-            : `${name}: связь пропала — ждём до ${RECONNECT_SECONDS} с, потом игрок покинет уровень`,
+            ? t('game.connectionRestored', name)
+            : t('game.disconnectedWaitingUpToSBefore', name, RECONNECT_SECONDS),
         );
       };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -386,7 +403,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.is('mute', code)) {
-      this.ui.toast(this.sfx.toggleMute() ? 'Звук выключен (M)' : 'Звук включён (M)');
+      this.ui.toast(this.sfx.toggleMute() ? t('game.soundOffM') : t('game.soundOnM'));
       return;
     }
     if (this.is('back', code)) {
@@ -424,13 +441,13 @@ export class GameScene extends Phaser.Scene {
     } else if (this.is('openDoor', code)) {
       const me = this.chooser();
       if (me && canOpenDoor(this.session.state, me)) this.choose({ type: 'openDoor' }, null);
-      else if (me?.keys) this.ui.toast('Подойдите к двери вплотную');
-      else if (this.me()?.keys) this.ui.toast('Ключ уже потрачен в этом плане');
-      else this.ui.toast('Нужен ключ');
+      else if (me?.keys) this.ui.toast(t('game.standNextToTheDoor'));
+      else if (this.me()?.keys) this.ui.toast(t('game.theKeyIsAlreadyUsedIn'));
+      else this.ui.toast(t('game.youNeedAKey'));
     } else if (this.is('dropHands', code)) {
       const hands = this.chooser()?.weapon;
       if (hands) this.choose({ type: 'drop', itemId: hands.id }, null);
-      else this.ui.toast('В руках ничего нет');
+      else this.ui.toast(t('game.yourHandsAreEmpty'));
     } else if (this.is('confirm', code)) {
       this.confirm();
     } else if (this.is('wait', code)) {
@@ -452,7 +469,7 @@ export class GameScene extends Phaser.Scene {
   private chooseItem(slot: number, type: 'equip' | 'drop'): void {
     const item = this.chooser()?.backpack[slot];
     if (!item) {
-      this.ui.toast(`Слот ${slot + 1} пуст`);
+      this.ui.toast(t('game.slotIsEmpty', slot + 1));
       return;
     }
     const use = type === 'equip' && item.type === 'potion' ? 'drink' : type;
@@ -480,7 +497,7 @@ export class GameScene extends Phaser.Scene {
     if (this.is('nextTarget', code)) {
       const next = nextAimTarget(this.session.state, me, this.aim);
       if (next) this.setAim(next);
-      else this.ui.toast('Некого бить в досягаемости');
+      else this.ui.toast(t('game.noTargetsInRange'));
       return true;
     }
     // Курсор ходит по одной клетке за нажатие: диагональ — две клавиши по очереди.
@@ -517,7 +534,7 @@ export class GameScene extends Phaser.Scene {
     const target = step(me.pos, direction);
     if (canAttack(this.session.state.map, me, target))
       this.choose({ type: 'attack', target }, null);
-    else this.ui.toast('Туда не ударить');
+    else this.ui.toast(t('game.cannotAttackThere'));
   }
 
   private onTileClick(tile: Position | null): void {
@@ -526,7 +543,7 @@ export class GameScene extends Phaser.Scene {
     if (!tile || !me || !this.canChoose()) return;
     this.aim = null;
     if (!this.session.state.explored[tile.y * this.session.state.map.width + tile.x]) {
-      this.ui.toast('Туда ещё не смотрели');
+      this.ui.toast(t('game.thatAreaHasNotBeenExplored'));
       return;
     }
     const { map } = this.session.state;
@@ -550,43 +567,39 @@ export class GameScene extends Phaser.Scene {
     };
 
     if (samePos(tile, me.pos)) {
-      offer('Ждать', [WAIT], null);
-      if (me.keys > 0) offer('Выбросить ключ', [{ type: 'dropKey' }], null);
+      offer(t('game.wait'), [WAIT], null);
+      if (me.keys > 0) offer(t('game.dropKey'), [{ type: 'dropKey' }], null);
       if (me.coins > 0) {
-        offer(`Выбросить монеты (${me.coins})`, [{ type: 'dropCoins', amount: me.coins }], null);
+        offer(t('game.dropCoins', me.coins), [{ type: 'dropCoins', amount: me.coins }], null);
       }
       for (const item of me.backpack) {
         if (item.type === 'potion') {
           const heal = Math.min(potionHeal(me.maxHp), me.maxHp - me.hp);
           offer(
-            `Выпить: баночка (${POTION.cost} ОД, +${heal} HP)`,
+            t('game.drinkPotionAPHP', POTION.cost, heal),
             [{ type: 'drink', itemId: item.id }],
             null,
           );
         } else if (isArmor(item)) {
           offer(
-            `Надеть: ${ITEM_NAMES[item.type]} (−${ARMORS[item.type].defense} урона)`,
+            t('game.wearDamage', ITEM_NAMES[item.type], ARMORS[item.type].defense),
             [{ type: 'equip', itemId: item.id }],
             null,
           );
         } else {
-          offer(
-            `Взять в руки: ${ITEM_NAMES[item.type]}`,
-            [{ type: 'equip', itemId: item.id }],
-            null,
-          );
+          offer(t('game.equip', ITEM_NAMES[item.type]), [{ type: 'equip', itemId: item.id }], null);
         }
       }
       if (me.weapon) {
         offer(
-          `Выбросить: ${ITEM_NAMES[me.weapon.type]}`,
+          t('game.drop', ITEM_NAMES[me.weapon.type]),
           [{ type: 'drop', itemId: me.weapon.id }],
           null,
         );
       }
       if (me.armor) {
         offer(
-          `Снять и выбросить: ${ITEM_NAMES[me.armor.type]}`,
+          t('game.removeAndDrop', ITEM_NAMES[me.armor.type]),
           [{ type: 'drop', itemId: me.armor.id }],
           null,
         );
@@ -596,30 +609,32 @@ export class GameScene extends Phaser.Scene {
       const { door } = this.session.state;
       if (door && !door.open && samePos(door.pos, tile)) {
         if (canOpenDoor(this.session.state, me))
-          offer('Открыть дверь', [{ type: 'openDoor' }], null);
-        else this.ui.toast(me.keys ? 'Подойдите к двери вплотную' : 'Дверь заперта — нужен ключ');
+          offer(t('game.openDoor'), [{ type: 'openDoor' }], null);
+        else
+          this.ui.toast(me.keys ? t('game.standNextToTheDoor') : t('game.theDoorIsLockedYouNeed'));
       }
       // По клетке с кем-то первым предлагаем удар, по пустой — шаг.
       const occupied = Object.values(this.session.state.actors).some((a) => samePos(a.pos, tile));
       const attack = (): void => {
-        if (canAttack(map, me, tile)) offer('Ударить', [{ type: 'attack', target: tile }], null);
+        if (canAttack(map, me, tile))
+          offer(t('game.attack'), [{ type: 'attack', target: tile }], null);
       };
       if (occupied) attack();
       // Шаги по пути заполняют оставшиеся фазы хода; если путь длиннее — запоминаем цель.
       const path = findPath(this.knownMap(), me.pos, tile);
       const steps = path ? this.stepsAlong(me.pos, path, ACTION_POINTS - slot) : [];
       if (path && steps.length > 0) {
-        const turns = path.length > 1 ? ` (${path.length} шаг.)` : '';
-        offer(`Идти${turns}`, steps, path.length > steps.length ? tile : null);
+        const turns = path.length > 1 ? t('game.steps', path.length) : '';
+        offer(t('game.move', turns), steps, path.length > steps.length ? tile : null);
       }
       if (!occupied) attack();
     }
     if (options.length === 0) {
-      this.ui.toast('Сюда не дойти и не ударить');
+      this.ui.toast(t('game.cannotMoveOrAttackThere'));
       return;
     }
     options.push({
-      label: 'Отмена',
+      label: t('game.cancel'),
       onPick: () => {
         this.popup.hide();
         this.chooseAt(base, base.length, [], baseGoal, true); // вернуть план как был до клика
@@ -657,7 +672,7 @@ export class GameScene extends Phaser.Scene {
     if (!me) return;
     const { map, actors, explored } = this.session.state;
     if (!explored[tile.y * map.width + tile.x]) {
-      this.ui.toast('Туда ещё не смотрели');
+      this.ui.toast(t('game.thatAreaHasNotBeenExplored'));
       return;
     }
     const path = samePos(tile, me.pos) ? [] : findPath(this.knownMap(), me.pos, tile);
@@ -676,7 +691,7 @@ export class GameScene extends Phaser.Scene {
       if (path && path.length > plan.length) goal = tile;
     }
     if (plan.length === 0) {
-      this.ui.toast('Сюда не дойти');
+      this.ui.toast(t('game.cannotReachThisTile'));
       this.redraw();
       return;
     }
@@ -781,7 +796,7 @@ export class GameScene extends Phaser.Scene {
       const sim = this.simulate([...draft, action]);
       if (!sim) {
         if (draft.length === slot && actions.length > 0 && !quiet) {
-          this.ui.toast('Не хватает очков действия');
+          this.ui.toast(t('game.notEnoughActionPoints'));
         }
         break;
       }
@@ -815,7 +830,7 @@ export class GameScene extends Phaser.Scene {
     this.popup.hide();
     if (!this.canChoose()) return;
     if (this.draft.length === 0) {
-      this.ui.toast(this.aim ? 'Сюда не ударить' : 'Сначала выберите действие');
+      this.ui.toast(this.aim ? t('game.cannotAttackThisTile') : t('game.chooseAnActionFirst'));
       return;
     }
     // Та же проверка, что в правилах: отправляем только то, что точно примут.
@@ -858,7 +873,7 @@ export class GameScene extends Phaser.Scene {
     const { width } = this.scale;
     this.offlineBanner = this.ui.add(
       this.add
-        .text(width / 2, HUD_TOP + 12, 'Связь пропала — переподключаемся…', {
+        .text(width / 2, HUD_TOP + 12, t('game.disconnectedReconnecting'), {
           fontFamily: 'monospace',
           fontSize: '16px',
           color: UI_COLORS.text,
@@ -948,9 +963,12 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'playerLeft':
         this.actors.setReady(event.playerId, false);
-        this.log(`${this.names.get(event.playerId) ?? 'игрок'} — выход из игры`);
+        this.log(t('game.leavingTheGame', this.names.get(event.playerId) ?? t('game.playerLower')));
         this.ui.toast(
-          `${this.names.get(event.playerId) ?? 'Игрок'} выходит из игры — вещи остались на полу`,
+          t(
+            'game.leavesTheGameTheirItemsRemain',
+            this.names.get(event.playerId) ?? t('game.player'),
+          ),
         );
         break;
       case 'damaged':
@@ -978,9 +996,9 @@ export class GameScene extends Phaser.Scene {
         this.showGameOver(event.status);
         break;
       case 'drank':
-        if (event.actorId === this.myId) this.log(`вы выпили баночку: +${event.healed} HP`);
+        if (event.actorId === this.myId) this.log(t('game.youDrankAPotionHP', event.healed));
         else if (this.actors.spriteOf(event.actorId)?.visible)
-          this.log(`${this.names.get(event.actorId) ?? '?'} выпивает баночку`);
+          this.log(t('game.drinksAPotion', this.names.get(event.actorId) ?? '?'));
         break;
       case 'moved':
       case 'bumped':
@@ -1037,7 +1055,10 @@ export class GameScene extends Phaser.Scene {
   /** Запоминает имена акторов и предметов, чтобы описать событие и после их исчезновения. */
   private rememberNames(state: GameState): void {
     for (const actor of Object.values(state.actors)) {
-      this.names.set(actor.id, actor.kind === 'monster' ? SPECIES_NAMES[actor.species] : 'игрок');
+      this.names.set(
+        actor.id,
+        actor.kind === 'monster' ? SPECIES_NAMES[actor.species] : t('game.player2'),
+      );
       for (const item of carriedItems(actor)) this.names.set(item.id, ITEM_NAMES[item.type]);
     }
     for (const item of Object.values(state.items)) {
@@ -1045,7 +1066,7 @@ export class GameScene extends Phaser.Scene {
       this.lootKinds.set(item.id, item.kind);
     }
     for (const [id, name] of Object.entries(this.playerNames)) this.names.set(id, name);
-    this.names.set(this.myId, 'вы');
+    this.names.set(this.myId, t('game.you'));
   }
 
   /**
@@ -1058,18 +1079,22 @@ export class GameScene extends Phaser.Scene {
       id === this.myId || this.actors.spriteOf(id)?.visible === true;
     switch (event.type) {
       case 'damaged':
-        if (event.by === this.myId) this.log(`вы попали: ${name(event.actorId)} −${event.amount}`);
+        if (event.by === this.myId) this.log(t('game.youHit', name(event.actorId), event.amount));
         else if (event.actorId === this.myId)
-          this.log(`${name(event.by)} попадает по вам −${event.amount}`);
+          this.log(t('game.hitsYou', name(event.by), event.amount));
         return;
       case 'died':
         if (seen(event.actorId))
-          this.log(event.actorId === this.myId ? 'вы погибли' : `${name(event.actorId)} погибает`);
+          this.log(
+            event.actorId === this.myId ? t('game.youDied') : t('game.dies', name(event.actorId)),
+          );
         return;
       case 'itemPickedUp':
         if (seen(event.actorId)) {
           const who =
-            event.actorId === this.myId ? 'вы подобрали' : `${name(event.actorId)} подбирает`;
+            event.actorId === this.myId
+              ? t('game.youPickedUp')
+              : t('game.picksUp', name(event.actorId));
           this.log(`${who}: ${name(event.itemId)}`);
         }
         return;
@@ -1079,24 +1104,29 @@ export class GameScene extends Phaser.Scene {
           const worn = this.session.state.actors[event.actorId]?.armor?.id === event.itemId;
           const who =
             event.actorId === this.myId
-              ? `вы ${worn ? 'надели' : 'взяли в руки'}`
-              : `${name(event.actorId)} ${worn ? 'надевает' : 'берёт в руки'}`;
+              ? t('game.selfAction', worn ? t('game.equippedArmor') : t('game.equippedWeapon'))
+              : t(
+                  'game.actorAction',
+                  name(event.actorId),
+                  worn ? t('game.equipsArmor') : t('game.equipsWeapon'),
+                );
           this.log(`${who}: ${name(event.itemId)}`);
         }
         return;
       case 'doorOpened':
-        this.log(event.actorId === this.myId ? 'вы открыли дверь' : 'дверь открыта');
+        this.log(event.actorId === this.myId ? t('game.youOpenedTheDoor') : t('game.doorOpened'));
         return;
       case 'exited':
         this.log(
           event.actorId === this.myId
-            ? 'вы вышли из подземелья'
-            : `${name(event.actorId)} выходит из подземелья`,
+            ? t('game.youEscapedTheDungeon')
+            : t('game.escapesTheDungeon', name(event.actorId)),
         );
         return;
       case 'itemDropped':
-        if (event.actorId === this.myId) this.log(`вы выбросили: ${name(event.itemId)}`);
-        else if (this.visible.has(posKey(event.at))) this.log(`на полу: ${name(event.itemId)}`);
+        if (event.actorId === this.myId) this.log(t('game.youDropped', name(event.itemId)));
+        else if (this.visible.has(posKey(event.at)))
+          this.log(t('game.onTheFloor', name(event.itemId)));
         return;
       default:
         return;
@@ -1106,9 +1136,9 @@ export class GameScene extends Phaser.Scene {
   /** Удар никого не задел: «мимо» над клеткой (если её видно) и запись в лог. */
   private onMiss(attackerId: ActorId, target: Position): void {
     if (this.visible.has(posKey(target))) this.actors.floatMiss(target, attackerId);
-    if (attackerId === this.myId) this.log('вы — мимо');
+    if (attackerId === this.myId) this.log(t('game.youMissed'));
     else if (this.actors.spriteOf(attackerId)?.visible) {
-      this.log(`${this.names.get(attackerId) ?? '?'} — мимо`);
+      this.log(t('game.missed', this.names.get(attackerId) ?? '?'));
     }
   }
 
@@ -1120,12 +1150,15 @@ export class GameScene extends Phaser.Scene {
   private formatLog(): string {
     const phases = [...new Set(this.turnLog.map((e) => e.phase))];
     return phases
-      .map(
-        (p) =>
-          `ф${p}: ${this.turnLog
+      .map((p) =>
+        t(
+          'game.phaseLog',
+          p,
+          this.turnLog
             .filter((e) => e.phase === p)
             .map((e) => e.text)
-            .join(', ')}`,
+            .join(', '),
+        ),
       )
       .join(' · ');
   }
@@ -1182,10 +1215,10 @@ export class GameScene extends Phaser.Scene {
   /** Строка выбора, когда своего героя на уровне нет: за кем смотрим и как переключиться. */
   private spectatorLine(): string {
     const target = this.watching ? this.session.state.actors[this.watching] : undefined;
-    if (!target) return 'Ждём конца уровня · Esc — выйти';
-    const name = this.names.get(target.id) ?? 'союзник';
-    const next = this.allies().length > 1 ? ' · Tab — следующий союзник' : '';
-    return `Смотрите за: ${name}${next} · Esc — выйти`;
+    if (!target) return t('game.waitingForTheLevelToEnd');
+    const name = this.names.get(target.id) ?? t('game.ally');
+    const next = this.allies().length > 1 ? t('game.tabNextAlly') : '';
+    return t('game.watchingEscLeave', name, next);
   }
 
   private showGameOver(status: 'won' | 'lost', reason?: string): void {
@@ -1199,7 +1232,11 @@ export class GameScene extends Phaser.Scene {
     const loot = this.session.state.escaped[this.myId];
     const title =
       reason ??
-      (status === 'lost' ? 'Вы погибли' : loot ? 'Уровень пройден!' : 'Уровень пройден без вас');
+      (status === 'lost'
+        ? t('game.youDied2')
+        : loot
+          ? t('game.levelComplete')
+          : t('game.yourTeamCompletedTheLevel'));
     this.ui.add(this.add.rectangle(0, 0, width, height, UI_COLORS.panel, 0.6).setOrigin(0));
     this.ui
       .add(
@@ -1211,18 +1248,23 @@ export class GameScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
     const summary = loot
-      ? `Вынесено: монет ${loot.coins} · в руках: ${ITEM_NAMES[loot.weapon?.type ?? 'none']} · ` +
-        `броня: ${ITEM_NAMES[loot.armor?.type ?? 'noArmor']} · ` +
-        `в рюкзаке: ${loot.backpack.map((i) => ITEM_NAMES[i.type]).join(', ') || 'пусто'}`
-      : 'Всё, что вы несли, потеряно';
+      ? t('game.escapedWithCoinsHands', loot.coins, ITEM_NAMES[loot.weapon?.type ?? 'none']) +
+        t('game.armor', ITEM_NAMES[loot.armor?.type ?? 'noArmor']) +
+        t(
+          'game.backpack',
+          loot.backpack.map((i) => ITEM_NAMES[i.type]).join(', ') || t('hub.empty'),
+        )
+      : t('game.everythingYouCarriedHasBeenLost');
     // Тренировка (демо и свои комнаты): ничего не теряется и не выносится.
-    const practice = 'Тренировка — снаряжение и добыча не сохраняются';
+    const practice = t('game.practiceEquipmentAndLootAreNot');
     this.ui.text(width / 2, height / 2 + 26, this.isRun ? summary : practice).setOrigin(0.5);
     if (this.isRun && loot) {
       // Сервер вернул вынесенное в профиль в тот же момент, как мы вышли.
-      this.ui.text(width / 2, height / 2 + 78, 'Добыча — в лагере', UI_COLORS.muted).setOrigin(0.5);
+      this.ui
+        .text(width / 2, height / 2 + 78, t('game.yourLootIsInCamp'), UI_COLORS.muted)
+        .setOrigin(0.5);
     }
-    this.ui.text(width / 2, height / 2 + 52, 'Esc — выйти', UI_COLORS.muted).setOrigin(0.5);
+    this.ui.text(width / 2, height / 2 + 52, t('game.escLeave'), UI_COLORS.muted).setOrigin(0.5);
   }
 
   // ---------- Отрисовка ----------
@@ -1311,30 +1353,30 @@ export class GameScene extends Phaser.Scene {
     const hands = actor?.weapon ?? null;
     switch (action.type) {
       case 'move':
-        return `шаг ${ARROWS[action.direction]}`;
+        return t('game.step', ARROWS[action.direction]);
       case 'attack':
         return hands?.type === 'sword'
-          ? 'удар мечом (замах)'
-          : `удар (${ITEM_NAMES[hands?.type ?? 'none']})`;
+          ? t('game.swordAttackWindUp')
+          : t('game.attack2', ITEM_NAMES[hands?.type ?? 'none']);
       case 'wait':
-        return 'ждать';
+        return t('game.wait2');
       case 'equip': {
         // Во время проигрывания хода броня уже надета: план по новому состоянию не
         // прогнать (actor — null), смотрим на героя как есть.
         const item = actor?.backpack.find((i) => i.id === action.itemId);
         const armor = (item && isArmor(item)) || (actor ?? this.me())?.armor?.id === action.itemId;
-        return `${armor ? 'надеть' : 'взять'}: ${name(action.itemId)}`;
+        return t('game.actionItem', armor ? t('hub.wear') : t('game.take'), name(action.itemId));
       }
       case 'drop':
-        return `выбросить: ${name(action.itemId)}`;
+        return t('game.drop2', name(action.itemId));
       case 'dropCoins':
-        return `выбросить монеты (${action.amount})`;
+        return t('game.dropCoins2', action.amount);
       case 'dropKey':
-        return 'выбросить ключ';
+        return t('game.dropKey2');
       case 'openDoor':
-        return 'открыть дверь';
+        return t('game.openDoor2');
       case 'drink':
-        return 'выпить баночку';
+        return t('game.drinkPotion');
     }
   }
 
@@ -1358,7 +1400,7 @@ export class GameScene extends Phaser.Scene {
       turn,
       health: health
         ? {
-            name: me ? null : (this.names.get(health.id) ?? 'союзник'),
+            name: me ? null : (this.names.get(health.id) ?? t('game.ally')),
             hp: health.hp,
             maxHp: health.maxHp,
           }
@@ -1374,23 +1416,25 @@ export class GameScene extends Phaser.Scene {
             keys: me.keys,
           }
         : null,
-      banner: this.session.state.escaped[this.myId] ? 'Вы вышли из подземелья' : 'Вы погибли',
+      banner: this.session.state.escaped[this.myId]
+        ? t('game.youEscapedTheDungeon2')
+        : t('game.youDied2'),
     });
   }
 
   /** Что сейчас выбирается: подсказка, план в работе или отправленный план. */
   private choiceLine(): string {
     const used = this.simulate(this.draft)?.used ?? 0;
-    if (this.sent) return `План: ${this.describePlan(this.sent)} ✓ — ждём остальных`;
+    if (this.sent) return t('game.planWaitingForOthers', this.describePlan(this.sent));
     if (this.aim) {
-      const blocked = this.draft[this.slot()] ? '' : ' (сюда не ударить)';
-      return `Прицел: WASD — двигать, Tab — следующая цель, Enter — ударить, F/Esc — выйти${blocked}`;
+      const blocked = this.draft[this.slot()] ? '' : t('game.cannotAttackHere');
+      return t('game.aimWASDMoveTabNextTarget', blocked);
     }
-    if (this.draft.length === 0) return `Выберите действие (ОД: ${ACTION_POINTS})`;
-    const plan = `План: ${this.describePlan(this.draft)}`;
+    if (this.draft.length === 0) return t('game.chooseAnActionAP', ACTION_POINTS);
+    const plan = t('game.plan', this.describePlan(this.draft));
     return used < ACTION_POINTS
-      ? `${plan} — ещё ${ACTION_POINTS - used} ОД или Enter (остаток — ждать)`
-      : `${plan} — Enter, чтобы подтвердить`;
+      ? t('game.apLeftOrEnterWaitFor', plan, ACTION_POINTS - used)
+      : t('game.enterToConfirm', plan);
   }
 
   /** В забеге выход по Esc — бросить его и потерять несённое, поэтому спрашиваем дважды. */
@@ -1406,7 +1450,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.abandonAskedAt = now;
-    this.ui.toast('Esc ещё раз — бросить забег: всё, что несёте, пропадёт');
+    this.ui.toast(t('game.escAgainAbandonTheRunEverything'));
   }
 
   private goBack(): void {

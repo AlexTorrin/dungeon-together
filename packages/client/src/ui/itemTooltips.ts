@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import {
   ARMORS,
   MIN_DAMAGE,
@@ -22,36 +23,38 @@ function capitalize(text: string): string {
 
 function weaponStats(type: WeaponType | null): string {
   const { damage, range, cost } = type ? WEAPONS[type] : UNARMED;
-  const swing = cost > 1 ? ' — замах на весь ход' : '';
-  return `урон ${damage} · дальность ${range} · удар ${cost} ОД${swing}`;
+  const swing = cost > 1 ? t('itemTooltips.windUpTakesTheWholeTurn') : '';
+  return t('itemTooltips.damageRangeAttackAP', damage, range, cost, swing);
 }
 
 function armorStats(type: ArmorType): string {
-  return `каждый удар по вам слабее на ${ARMORS[type].defense} (но не меньше ${MIN_DAMAGE})`;
+  return t('itemTooltips.reducesEachHitByMinimumDamage', ARMORS[type].defense, MIN_DAMAGE);
 }
 
 /** Ячейка «руки»: оружие или кулаки. */
 export function handsTooltip(type: WeaponType | null): string {
-  const hint = type ? `Q — выбросить (${DROP_COST} ОД)` : 'оружие из рюкзака — 1–4 по его ячейке';
+  const hint = type
+    ? t('itemTooltips.qDropAP', DROP_COST)
+    : t('itemTooltips.equipFromBackpackPressItsSlot');
   return [capitalize(ITEM_NAMES[type ?? 'none']), weaponStats(type), hint].join('\n');
 }
 
 /** Ячейка «броня»: что надето. */
 export function armorTooltip(type: ArmorType | null): string {
-  if (!type) return 'Без брони\nброню из рюкзака — 1–4 по её ячейке';
+  if (!type) return t('itemTooltips.noArmorEquipArmorFromBackpack');
   return [capitalize(ITEM_NAMES[type]), armorStats(type)].join('\n');
 }
 
 /** Ячейка рюкзака с номером slot (1–4). */
 export function backpackTooltip(item: Item | null, slot: number): string {
-  if (!item) return `Ячейка ${slot} пуста\nсюда попадает подобранное`;
-  const drop = `Shift+${slot} — выбросить (${DROP_COST} ОД)`;
-  const use = (verb: string, cost: number): string => `${slot} или клик — ${verb} (${cost} ОД)`;
+  if (!item) return t('itemTooltips.slotIsEmptyPickedUpItems', slot);
+  const drop = t('itemTooltips.shiftDropAP', slot, DROP_COST);
+  const use = (verb: string, cost: number): string => t('itemTooltips.orClickAP', slot, verb, cost);
   if (item.type === 'potion') {
     return [
-      'Баночка лечения',
-      `возвращает ${POTION.healShare * 100}% HP (не выше максимума)`,
-      use('выпить', POTION.cost),
+      t('itemTooltips.healingPotion'),
+      t('itemTooltips.restoresHPUpToMaximum', POTION.healShare * 100),
+      use(t('itemTooltips.drink'), POTION.cost),
       drop,
     ].join('\n');
   }
@@ -59,20 +62,20 @@ export function backpackTooltip(item: Item | null, slot: number): string {
     return [
       capitalize(ITEM_NAMES[item.type]),
       armorStats(item.type),
-      use('надеть', EQUIP_COST),
+      use(t('hub.wear'), EQUIP_COST),
       drop,
     ].join('\n');
   }
   return [
     capitalize(ITEM_NAMES[item.type]),
     weaponStats(item.type),
-    use('взять в руки', EQUIP_COST),
+    use(t('itemTooltips.equip'), EQUIP_COST),
     drop,
   ].join('\n');
 }
 
 export function coinsTooltip(coins: number): string {
-  return `Монеты: ${coins}\nвынесите их с уровня — тратить в лагере\nпогибнете — пропадут`;
+  return t('itemTooltips.coinsEscapeTheLevelToSpend', coins);
 }
 
-export const KEY_TOOLTIP = 'Ключ\nоткрывает дверь-выход: E, стоя рядом с дверью';
+export const keyTooltip = (): string => t('itemTooltips.keyOpensTheExitDoorE');

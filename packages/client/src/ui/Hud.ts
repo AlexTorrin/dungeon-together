@@ -1,9 +1,10 @@
+import { t } from '../i18n';
 import Phaser from 'phaser';
 import { BACKPACK_SIZE, type ArmorItem, type Item, type WeaponItem } from '@dt/shared';
 import { ANIMATIONS, firstFrame, itemTexture } from '../assetKeys';
 import { UI_COLORS } from '../config';
 import {
-  KEY_TOOLTIP,
+  keyTooltip,
   armorTooltip,
   backpackTooltip,
   coinsTooltip,
@@ -28,27 +29,26 @@ const HP_COLORS = { back: 0x3b2433, fill: 0x6cc24a, low: 0xe0503a } as const;
 const LOW_HP = 0.3;
 const SLOT_COLORS = { fill: 0x2a1720, border: 0x5a3550, hover: 0x8a4b2f } as const;
 
-const HELP_INTRO =
-  'Ход — 2 очка действия (ОД); все выбирают план, потом он разыгрывается в две фазы';
+const helpIntro = (): string => t('hud.turnActionPointsAPEveryonePlans');
 
 /** Справка: клавиша — что делает. Две колонки отдельными текстами: пробелами не выровнять. */
 const helpRows = (backLabel: string): readonly (readonly [string, string])[] => [
-  ['WASD / стрелки', 'шаг; две клавиши сразу — по диагонали'],
-  ['Shift + WASD', 'удар в эту сторону (пока Shift зажат, видно, куда достать)'],
-  ['F', 'прицел: WASD — курсор, Tab — следующая цель, Enter — ударить'],
-  ['Пробел', 'ждать'],
-  ['1–4', 'из рюкзака: взять в руки / надеть / выпить (или клик по ячейке)'],
-  ['Shift + 1–4', 'выбросить из рюкзака'],
-  ['Q', 'выбросить то, что в руках'],
-  ['E', 'открыть дверь ключом (стоя рядом)'],
-  ['Enter', 'подтвердить план (недостающее — ждать)'],
-  ['Backspace', 'убрать последнее действие'],
-  ['ПКМ / Esc', 'очистить план (отправленный — отозвать)'],
-  ['Клик по клетке', 'меню действий; двойной клик — сразу ход'],
-  ['Esc', `${backLabel} (в забеге — дважды: бросить забег, вещи пропадут)`],
-  ['Tab', 'погибли или вышли — следить за следующим союзником'],
-  ['M', 'звук: выключить / включить'],
-  ['H', 'закрыть справку'],
+  [t('hud.wasdArrows'), t('hud.movePressTwoKeysForA')],
+  ['Shift + WASD', t('hud.attackInThatDirectionHoldShift')],
+  ['F', t('hud.aimWASDCursorTabNextTarget')],
+  [t('hud.space'), t('game.wait2')],
+  ['1–4', t('hud.backpackEquipWearDrinkOrClick')],
+  ['Shift + 1–4', t('hud.dropFromBackpack')],
+  ['Q', t('hud.dropTheItemInYourHands')],
+  ['E', t('hud.openDoorWithAKeyStand')],
+  ['Enter', t('hud.confirmPlanUnusedActionsBecomeWaits')],
+  ['Backspace', t('hud.removeLastAction')],
+  [t('hud.rmbEsc'), t('hud.clearPlanCancelIfAlreadySubmitted')],
+  [t('hud.clickTile'), t('hud.actionMenuDoubleClickMoveImmediately')],
+  ['Esc', t('hud.duringARunTwiceAbandonRun', backLabel)],
+  ['Tab', t('hud.whenDeadOrEscapedWatchNext')],
+  ['M', t('hud.soundOffOn')],
+  ['H', t('hud.closeHelp')],
 ];
 
 /** Чьё здоровье показать: своё или того, за кем следим. */
@@ -146,13 +146,13 @@ export class Hud {
     this.hpBack.setOrigin(0, 0.5);
     this.hpFill.setOrigin(0, 0.5);
     this.hpText = ui.text(0, 0, '');
-    this.helpHint = ui.text(0, 8, 'H — клавиши', UI_COLORS.muted).setOrigin(1, 0);
+    this.helpHint = ui.text(0, 8, t('hud.hControls'), UI_COLORS.muted).setOrigin(1, 0);
     this.prompt = ui.text(PAD, 30, '');
     this.log = ui.text(PAD, 50, '', UI_COLORS.muted);
 
     const captions = [
-      'руки',
-      'броня',
+      t('hub.hands'),
+      t('hub.armor'),
       ...Array.from({ length: BACKPACK_SIZE }, (_, i) => `${i + 1}`),
     ];
     this.slots = captions.map((caption, index) => {
@@ -191,7 +191,7 @@ export class Hud {
 
     const style = { fontFamily: 'monospace', fontSize: '14px', lineSpacing: 6 } as const;
     const rows = helpRows(backLabel);
-    const intro = scene.add.text(0, 0, HELP_INTRO, { ...style, color: UI_COLORS.text });
+    const intro = scene.add.text(0, 0, helpIntro(), { ...style, color: UI_COLORS.text });
     const keys = scene.add.text(0, intro.height + 16, rows.map(([key]) => key).join('\n'), {
       ...style,
       color: UI_COLORS.muted,
@@ -245,7 +245,7 @@ export class Hud {
     }
     if (hovered === 'coins')
       this.tooltip.show(coinsTooltip(inventory.coins), this.coinIcon.getBounds());
-    else if (hovered === 'key') this.tooltip.show(KEY_TOOLTIP, this.keyIcon.getBounds());
+    else if (hovered === 'key') this.tooltip.show(keyTooltip(), this.keyIcon.getBounds());
     else {
       const slot = this.slots[hovered];
       if (slot) this.tooltip.show(slotTooltip(inventory, hovered), slot.box.getBounds());
@@ -280,7 +280,7 @@ export class Hud {
 
     const view = this.view;
     if (!view) return;
-    this.head.setText(`${view.title} · Ход ${view.turn}`);
+    this.head.setText(t('hud.turn', view.title, view.turn));
     this.layoutHealth(view.health, this.head.x + this.head.width + 20);
     this.prompt.setText(view.prompt);
     this.log.setText(view.log);

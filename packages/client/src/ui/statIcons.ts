@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import Phaser from 'phaser';
 import { ARMORS, POTION, WEAPONS, isArmorType, type ItemType } from '@dt/shared';
 import { ASSET_PATHS } from '../assetKeys';
@@ -96,12 +97,18 @@ export function drawLegend(canvas: IconCanvas, x: number, y: number): number {
     const t = canvas.ui.text(at + 4, y, text, UI_COLORS.muted).setOrigin(0, 0.5);
     return t.x + t.width + GROUP_GAP;
   };
-  x = muted(damagePips(canvas, 1, label(canvas, ASSET_PATHS.swordItem, x, y), y), 'урон');
+  x = muted(
+    damagePips(canvas, 1, label(canvas, ASSET_PATHS.swordItem, x, y), y),
+    t('statIcons.damage'),
+  );
   x = muted(
     rangePips(canvas, 1, label(canvas, ASSET_PATHS.arrow, x, y, -Math.PI / 2), y),
-    'дальность',
+    t('statIcons.range'),
   );
-  x = muted(apPips(canvas, 1, x, y), 'ОД');
-  muted(defensePips(canvas, 1, label(canvas, ASSET_PATHS.mailItem, x, y), y), 'защита');
+  x = muted(apPips(canvas, 1, x, y), t('statIcons.ap'));
+  muted(
+    defensePips(canvas, 1, label(canvas, ASSET_PATHS.mailItem, x, y), y),
+    t('statIcons.defense'),
+  );
   return ICON;
 }

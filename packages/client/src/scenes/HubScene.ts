@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import Phaser from 'phaser';
 import {
   BACKPACK_SIZE,
@@ -97,13 +98,13 @@ export class HubScene extends Phaser.Scene {
     this.drawCamp(width);
 
     this.ui.add(
-      this.add.text(MARGIN, 18, 'Лагерь', {
+      this.add.text(MARGIN, 18, t('hub.camp'), {
         fontFamily: 'monospace',
         fontSize: '32px',
         color: UI_COLORS.text,
       }),
     );
-    const back = this.ui.add(new TextButton(this, 0, 0, '← в меню (Esc)', () => this.goBack()));
+    const back = this.ui.add(new TextButton(this, 0, 0, t('hub.menuEsc'), () => this.goBack()));
     back.setPosition(width - MARGIN - back.width, 20);
     this.input.keyboard?.on('keydown-ESC', () => this.goBack());
     const onResize = (): void => this.redraw();
@@ -112,7 +113,7 @@ export class HubScene extends Phaser.Scene {
 
     const profile = this.profile;
     if (!profile) {
-      const status = this.ui.text(MARGIN, 64, 'Загружаем профиль с сервера…', UI_COLORS.muted);
+      const status = this.ui.text(MARGIN, 64, t('hub.loadingProfileFromServer'), UI_COLORS.muted);
       fetchProfile()
         .then((loaded) => {
           if (!this.scene.isActive()) return;
@@ -219,7 +220,7 @@ export class HubScene extends Phaser.Scene {
 
   private drawWallet(coins: number, x: number, y: number): void {
     this.ui.add(this.add.image(x + 8, y, firstFrame(ANIMATIONS.coin)).setScale(2));
-    this.ui.text(x + 24, y, `${coins} мон. в кошельке`).setOrigin(0, 0.5);
+    this.ui.text(x + 24, y, t('hub.coinsInWallet', coins)).setOrigin(0, 0.5);
   }
 
   // ---------- Карточки ----------
@@ -275,7 +276,7 @@ export class HubScene extends Phaser.Scene {
   }
 
   private drawShop(profile: Profile, x: number, top: number): number {
-    const card = this.openCard(x, top, 'Магазин');
+    const card = this.openCard(x, top, t('hub.shop'));
     for (const type of SHOP_STOCK) {
       const y = card.y;
       this.cell(x + PAD, y, type);
@@ -289,24 +290,24 @@ export class HubScene extends Phaser.Scene {
       const right = x + card.width - PAD;
       if (applyHubAction(profile, action)) {
         const buy = this.ui.add(
-          new TextButton(this, 0, 0, `купить ${price}`, () => this.send(action)),
+          new TextButton(this, 0, 0, t('hub.buy', price), () => this.send(action)),
         );
         buy.setPosition(right - buy.width, mid - buy.height / 2);
       } else {
-        this.ui.text(right, mid, `${price} мон.`, UI_COLORS.muted).setOrigin(1, 0.5);
+        this.ui.text(right, mid, t('hub.coins', price), UI_COLORS.muted).setOrigin(1, 0.5);
       }
       card.y += SHOP_ROW;
     }
     card.y += 4;
     card.y += drawLegend(this.canvas(), x + PAD, card.y + 8) + 10;
-    this.note(card, 'Продажа — за полцены. Купленное — в рюкзак, а если он полон — в сундук.');
+    this.note(card, t('hub.sellForHalfPricePurchasesGo'));
     return this.closeCard(card);
   }
 
   private drawGear(profile: Profile, x: number, top: number): number {
-    const card = this.openCard(x, top, 'Снаряжение — идёт в забег');
-    this.drawItem(card, profile, 'руки', { place: 'hands' }, ['backpack', 'chest']);
-    this.drawItem(card, profile, 'броня', { place: 'armor' }, ['backpack', 'chest']);
+    const card = this.openCard(x, top, t('hub.equipmentTakenOnRuns'));
+    this.drawItem(card, profile, t('hub.hands'), { place: 'hands' }, ['backpack', 'chest']);
+    this.drawItem(card, profile, t('hub.armor'), { place: 'armor' }, ['backpack', 'chest']);
     for (let index = 0; index < BACKPACK_SIZE; index++) {
       const caption = `${index + 1}`;
       if (index < profile.backpack.length) {
@@ -316,15 +317,15 @@ export class HubScene extends Phaser.Scene {
         this.drawEmpty(card, caption);
       }
     }
-    this.note(card, 'Погибнете — снаряжение пропадёт.');
+    this.note(card, t('hub.ifYouDieYourEquipmentIs'));
     return this.closeCard(card);
   }
 
   /** Сундук: одинаковые предметы — одной строкой «лук ×3», действия берут первый из них. */
   private drawChest(profile: Profile, x: number, top: number): number {
-    const card = this.openCard(x, top, `Сундук (${profile.chest.length}) — в безопасности`);
+    const card = this.openCard(x, top, t('hub.chestSafeStorage', profile.chest.length));
     const types = [...new Set(profile.chest)];
-    if (types.length === 0) this.note(card, 'пусто — сюда можно убрать вещи из снаряжения');
+    if (types.length === 0) this.note(card, t('hub.emptyStoreEquipmentHere'));
     for (const type of types) {
       const count = profile.chest.filter((t) => t === type).length;
       const index = profile.chest.indexOf(type);
@@ -338,7 +339,7 @@ export class HubScene extends Phaser.Scene {
   private drawEmpty(card: Card, caption: string): void {
     this.cell(card.x + PAD, card.y, null, caption);
     this.ui
-      .text(card.x + PAD + CELL + 10, card.y + CELL / 2, 'пусто', UI_COLORS.muted)
+      .text(card.x + PAD + CELL + 10, card.y + CELL / 2, t('hub.empty'), UI_COLORS.muted)
       .setOrigin(0, 0.5);
     card.y += CELL + 6;
   }
@@ -367,12 +368,17 @@ export class HubScene extends Phaser.Scene {
     const name = `${ITEM_NAMES[type]}${count > 1 ? ` ×${count}` : ''}`;
     this.ui.text(textX, y + 8, name).setOrigin(0, 0.5);
     drawStats(this.canvas(), type, textX + NAME_WIDTH, y + 8);
-    const titles = { hands: 'в руки', armor: 'надеть', backpack: 'в рюкзак', chest: 'в сундук' };
+    const titles = {
+      hands: t('hub.equip'),
+      armor: t('hub.wear'),
+      backpack: t('hub.toBackpack'),
+      chest: t('hub.toChest'),
+    };
     const row: Phaser.GameObjects.Text[] = [];
     for (const to of targets) {
       this.addButton(row, profile, titles[to], { type: 'move', from: slot, to });
     }
-    this.addButton(row, profile, `продать ${sellPrice(type)}`, { type: 'sell', slot });
+    this.addButton(row, profile, t('hub.sell', sellPrice(type)), { type: 'sell', slot });
     layoutRow(row, textX, y + 20);
     card.y += ROW;
   }

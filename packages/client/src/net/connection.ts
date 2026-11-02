@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { Client, type Room } from '@colyseus/sdk';
 import { ROOM_NAME, type CreateOptions, type JoinOptions } from '@dt/shared';
 
@@ -37,9 +38,8 @@ export function reconnectRoom(reconnectionToken: string): Promise<Room> {
 /** Понятный игроку текст ошибки подключения. */
 export function connectionError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (/not found/i.test(message)) return 'Комнаты с таким кодом нет (или игра в ней уже идёт)';
-  if (/не годится/.test(message))
-    return 'Сервер не принял комнату: нет старта или она больше 64×64';
-  if (/locked|full/i.test(message)) return 'В комнату нельзя войти: она полна или игра уже идёт';
-  return `Нет связи с сервером ${serverUrl()} — запущен ли он (pnpm dev:server)?`;
+  if (/not found/i.test(message)) return t('connection.roomNotFoundOrTheGame');
+  if (/не годится/.test(message)) return t('connection.theServerRejectedThisRoomMissing');
+  if (/locked|full/i.test(message)) return t('connection.cannotJoinTheRoomIsFull');
+  return t('connection.cannotConnectToServerIsIt', serverUrl());
 }

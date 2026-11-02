@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import {
   PROFILE_ACTION_PATH,
   PROFILE_PATH,
@@ -20,14 +21,12 @@ async function request(path: string, init: RequestInit = {}): Promise<Profile> {
     });
   } catch (error: unknown) {
     console.warn('Сервер недоступен', error);
-    throw new ProfileError(
-      `Нет связи с сервером ${serverUrl()} — запущен ли он (pnpm dev:server)?`,
-    );
+    throw new ProfileError(t('connection.cannotConnectToServerIsIt', serverUrl()));
   }
-  if (response.status === 409) throw new ProfileError('Так нельзя');
-  if (!response.ok) throw new ProfileError(`Сервер ответил ошибкой ${response.status}`);
+  if (response.status === 409) throw new ProfileError(t('profileApi.thisActionIsNotAllowed'));
+  if (!response.ok) throw new ProfileError(t('profileApi.serverReturnedError', response.status));
   const profile = parseProfile(await response.json());
-  if (!profile) throw new ProfileError('Сервер прислал странный профиль');
+  if (!profile) throw new ProfileError(t('profileApi.theServerSentAnInvalidProfile'));
   return profile;
 }
 
@@ -43,5 +42,5 @@ export function sendHubAction(action: HubAction): Promise<Profile> {
 
 /** Текст ошибки для игрока. */
 export function profileErrorText(error: unknown): string {
-  return error instanceof ProfileError ? error.message : 'Что-то пошло не так';
+  return error instanceof ProfileError ? error.message : t('profileApi.somethingWentWrong');
 }

@@ -1,3 +1,4 @@
+import { getLocale, setLocale, t } from '../i18n';
 import Phaser from 'phaser';
 import {
   BACKPACK_SIZE,
@@ -46,15 +47,28 @@ export class MenuScene extends Phaser.Scene {
     const left = (width - total) / 2;
     const wide = total >= 720;
     const col = wide ? (total - gap) / 2 : total;
-    let y = 24;
-    ui.text(left, y, 'ПОШАГОВОЕ ПРИКЛЮЧЕНИЕ · 1–4 ИГРОКА', MENU_COLORS.gold).setFontSize(12);
+    const languageY = wide ? 20 : 16;
+    const languageX = wide ? left + total - 150 : left;
+    for (const [index, locale] of (['ru', 'en'] as const).entries()) {
+      const button = menuButton(
+        this,
+        ui,
+        languageX + index * 76,
+        languageY,
+        70,
+        locale.toUpperCase(),
+        () => {
+          setLocale(locale);
+          this.scene.restart();
+        },
+      );
+      button.setSelected(getLocale() === locale);
+      button.setFontSize(13).setPadding(8, 8, 8, 8).setFixedSize(70, 32);
+    }
+    let y = wide ? 24 : 68;
+    ui.text(left, y, t('menu.tagline'), MENU_COLORS.gold).setFontSize(12);
     ui.text(left, y + 26, 'Dungeon Togethere').setFontSize(width < 480 ? 25 : 36);
-    ui.text(
-      left,
-      y + 78,
-      'Спланируйте ход. Сразитесь вместе. Вернитесь с добычей.',
-      UI_COLORS.muted,
-    ).setWordWrapWidth(total);
+    ui.text(left, y + 78, t('menu.subtitle'), UI_COLORS.muted).setWordWrapWidth(total);
     y += width < 480 ? 138 : 112;
 
     const resume = rememberedRoom();
@@ -65,7 +79,7 @@ export class MenuScene extends Phaser.Scene {
         left,
         y,
         total,
-        `Вернуться в игру ${resume.code}`,
+        t('menu.returnToGame', resume.code),
         () => this.resume(resume.reconnectionToken, ui),
         true,
       );
@@ -73,22 +87,19 @@ export class MenuScene extends Phaser.Scene {
     }
 
     const top = y;
-    menuPanel(this, ui, left, top, col, 280, '01 / В ПОДЗЕМЕЛЬЕ');
-    ui.text(left + 22, top + 48, 'Одиночный забег').setFontSize(24);
-    ui.text(
-      left + 22,
-      top + 86,
-      'Случайный уровень и новая добыча.',
-      UI_COLORS.muted,
-    ).setWordWrapWidth(col - 44);
+    menuPanel(this, ui, left, top, col, 280, t('menu.adventureSection'));
+    ui.text(left + 22, top + 48, t('menu.soloAdventure')).setFontSize(24);
+    ui.text(left + 22, top + 86, t('menu.adventureDescription'), UI_COLORS.muted).setWordWrapWidth(
+      col - 44,
+    );
     const hint = ui
       .text(left + 22, top + 173, '', UI_COLORS.muted)
       .setFontSize(13)
       .setWordWrapWidth(col - 44);
     const descriptions: Record<Difficulty, string> = {
-      easy: 'Для первого похода: меньше опасностей.',
-      medium: 'Больше врагов. Пригодится снаряжение.',
-      hard: 'Опасные противники. Подготовьтесь в лагере.',
+      easy: t('menu.easyDescription'),
+      medium: t('menu.mediumDescription'),
+      hard: t('menu.hardDescription'),
     };
     const choices = DIFFICULTY_LIST.map((difficulty, index) => {
       const button = menuButton(
@@ -117,7 +128,7 @@ export class MenuScene extends Phaser.Scene {
       left + 22,
       top + 204,
       col - 44,
-      'Начать забег →',
+      t('menu.startAdventure'),
       () => {
         const data: LobbySceneData = { solo: this.difficulty };
         this.scene.start(SCENES.lobby, data);
@@ -127,10 +138,10 @@ export class MenuScene extends Phaser.Scene {
 
     const campX = wide ? left + col + gap : left;
     const campY = wide ? top : top + 296;
-    menuPanel(this, ui, campX, campY, col, 280, '02 / ПОДГОТОВКА');
-    ui.text(campX + 22, campY + 48, 'Ваш лагерь').setFontSize(24);
+    menuPanel(this, ui, campX, campY, col, 280, t('menu.campSection'));
+    ui.text(campX + 22, campY + 48, t('menu.yourCamp')).setFontSize(24);
     const wallet = ui
-      .text(campX + 22, campY + 88, 'Загружаем профиль…', MENU_COLORS.gold)
+      .text(campX + 22, campY + 88, t('menu.loadingProfile'), MENU_COLORS.gold)
       .setWordWrapWidth(col - 44);
     const gear = ui
       .text(campX + 22, campY + 120, '', UI_COLORS.muted)
@@ -139,34 +150,31 @@ export class MenuScene extends Phaser.Scene {
     fetchProfile()
       .then((profile) => {
         if (!wallet.active) return;
-        wallet.setText(`${profile.coins} монет · сундук: ${profile.chest.length} предм.`);
+        wallet.setText(t('menu.coinsChestItems', profile.coins, profile.chest.length));
         gear.setText(
-          `В руках: ${ITEM_NAMES[profile.hands ?? 'none']}\n` +
-            `Броня: ${ITEM_NAMES[profile.armor ?? 'noArmor']}\n` +
-            `Рюкзак: ${profile.backpack.length} / ${BACKPACK_SIZE}`,
+          t('menu.hands', ITEM_NAMES[profile.hands ?? 'none']) +
+            t('menu.armor', ITEM_NAMES[profile.armor ?? 'noArmor']) +
+            t('menu.backpack', profile.backpack.length, BACKPACK_SIZE),
         );
       })
       .catch((error: unknown) => {
         if (wallet.active) {
-          wallet.setText('Профиль недоступен');
+          wallet.setText(t('menu.profileUnavailable'));
           gear.setText(profileErrorText(error));
         }
       });
-    menuButton(this, ui, campX + 22, campY + 204, col - 44, 'В лагерь →', () => {
+    menuButton(this, ui, campX + 22, campY + 204, col - 44, t('menu.goToCamp'), () => {
       const data: HubSceneData = {};
       this.scene.start(SCENES.hub, data);
     });
     y = campY + 296;
-    menuPanel(this, ui, left, y, total, wide ? 130 : 224, '03 / ВМЕСТЕ ВЕСЕЛЕЕ');
-    ui.text(left + 22, y + 44, 'Кооператив с друзьями')
+    menuPanel(this, ui, left, y, total, wide ? 130 : 224, t('menu.coopSection'));
+    ui.text(left + 22, y + 44, t('menu.coOpWithFriends'))
       .setFontSize(22)
       .setWordWrapWidth(total - 44);
-    ui.text(
-      left + 22,
-      y + 80,
-      'Создайте комнату или войдите по коду. До 4 игроков.',
-      UI_COLORS.muted,
-    ).setWordWrapWidth(wide ? total - 330 : total - 44);
+    ui.text(left + 22, y + 80, t('menu.coopDescription'), UI_COLORS.muted).setWordWrapWidth(
+      wide ? total - 330 : total - 44,
+    );
     const onlineY = wide ? y + 50 : y + 126;
     menuButton(
       this,
@@ -174,7 +182,7 @@ export class MenuScene extends Phaser.Scene {
       wide ? left + total - 266 : left + 22,
       onlineY,
       wide ? 244 : total - 44,
-      'Сетевая игра →',
+      t('menu.onlineGame'),
       () => {
         const data: LobbySceneData = {};
         this.scene.start(SCENES.lobby, data);
@@ -187,7 +195,7 @@ export class MenuScene extends Phaser.Scene {
       left,
       y,
       total,
-      `${this.trainingOpen ? '−' : '+'} Тренировка и свои комнаты`,
+      t('menu.practiceCustomRooms', this.trainingOpen ? '−' : '+'),
       () => {
         this.trainingOpen = !this.trainingOpen;
         this.scene.restart();
@@ -195,24 +203,19 @@ export class MenuScene extends Phaser.Scene {
     );
     y += 60;
     if (this.trainingOpen) {
-      ui.text(
-        left,
-        y,
-        'Без снаряжения из лагеря. Добыча не сохраняется.',
-        UI_COLORS.muted,
-      ).setWordWrapWidth(total);
+      ui.text(left, y, t('menu.practiceDescription'), UI_COLORS.muted).setWordWrapWidth(total);
       y += 48;
-      menuButton(this, ui, left, y, total, 'Демо-комната', () =>
-        this.play(DEMO_ROOM, 'Демо-комната'),
+      menuButton(this, ui, left, y, total, t('menu.demoRoom'), () =>
+        this.play(DEMO_ROOM, t('menu.demoRoom')),
       );
       y += 58;
-      menuButton(this, ui, left, y, total, 'Редактор комнат', () => this.openEditor({}));
+      menuButton(this, ui, left, y, total, t('menu.roomEditor'), () => this.openEditor({}));
       y += 66;
       const rooms = loadRooms();
       ui.text(
         left,
         y,
-        rooms.length ? 'МОИ КОМНАТЫ' : 'Сохранённых комнат пока нет',
+        rooms.length ? t('menu.savedRooms') : t('menu.noSavedRoomsYet'),
         UI_COLORS.muted,
       );
       y += 32;
@@ -220,17 +223,19 @@ export class MenuScene extends Phaser.Scene {
         const name = ui.text(left, y, saved.name).setWordWrapWidth(total);
         y += name.height + 16;
         const buttons = [
-          ui.add(new TextButton(this, 0, 0, 'Играть', () => this.play(saved.room, saved.name))),
           ui.add(
-            new TextButton(this, 0, 0, 'Изменить', () =>
+            new TextButton(this, 0, 0, t('menu.play'), () => this.play(saved.room, saved.name)),
+          ),
+          ui.add(
+            new TextButton(this, 0, 0, t('menu.edit'), () =>
               this.openEditor({
                 draft: { id: saved.id, name: saved.name, room: saved.room, dirty: false },
               }),
             ),
           ),
           ui.add(
-            new TextButton(this, 0, 0, 'Удалить', () => {
-              if (!window.confirm(`Удалить комнату «${saved.name}»?`)) return;
+            new TextButton(this, 0, 0, t('menu.delete'), () => {
+              if (!window.confirm(t('menu.deleteRoom', saved.name))) return;
               deleteRoom(saved.id);
               this.scene.restart();
             }),
@@ -240,9 +245,7 @@ export class MenuScene extends Phaser.Scene {
         y += 54;
       }
     }
-    ui.text(left, y, '2 действия за ход · решения принимаются одновременно', UI_COLORS.muted)
-      .setWordWrapWidth(total)
-      .setFontSize(12);
+    ui.text(left, y, t('menu.turnHint'), UI_COLORS.muted).setWordWrapWidth(total).setFontSize(12);
     const maxScroll = Math.max(0, y + 64 - height);
     this.input.on('wheel', (_p: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number) => {
       ui.camera.setScroll(0, Phaser.Math.Clamp(ui.camera.scrollY + dy, 0, maxScroll));
@@ -280,7 +283,7 @@ export class MenuScene extends Phaser.Scene {
         forgetRoom();
         ui.toast(
           /not found|expired|invalid/i.test(String(error))
-            ? `Вернуться нельзя: место ждёт ${RECONNECT_SECONDS} с, или игра уже закончилась`
+            ? t('menu.resumeUnavailable', RECONNECT_SECONDS)
             : connectionError(error),
         );
         this.time.delayedCall(2000, () => this.scene.restart());
